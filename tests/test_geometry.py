@@ -32,3 +32,9 @@ def test_negative_length_rejected():
     geom = SampleGeometry(length_m=-1.0, area_m2=1e-6)
     with pytest.raises(GeometryError):
         geom.validate()
+
+
+def test_negative_partial_dimension_rejected_even_when_geometry_incomplete():
+    geom = SampleGeometry(width_m=-1.0)
+    with pytest.raises(GeometryError):
+        geom.validate()

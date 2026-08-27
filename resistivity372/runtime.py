@@ -109,66 +109,97 @@ class RuntimeFactory:
         pause_flag: threading.Event | None = None,
         on_record: Callable | None = None,
         on_log: Callable | None = None,
+        on_step: Callable | None = None,
         connect: bool = True,
+        controllers: Controllers | None = None,
     ) -> RuntimeBundle:
         sim_mode = resolve_instrument_simulation_mode(config, simulate=simulate)
-        controllers = self.create_controllers(config, simulate=simulate, dry_run=dry_run)
-        if connect:
-            controllers.lakeshore.connect()
-            controllers.ppms.connect()
+        controllers = controllers or self.create_controllers(
+            config, simulate=simulate, dry_run=dry_run
+        )
+        datafile: DataFileWriter | None = None
+        try:
+            if connect:
+                if not controllers.lakeshore.is_connected:
+                    controllers.lakeshore.connect()
+                if not controllers.ppms.is_connected:
+                    controllers.ppms.connect()
 
-        data_cfg = config.get("data", {})
-        backend = str(data_cfg.get("backend", "multipyvu")).lower()
-        allow_overwrite = bool(data_cfg.get("allow_overwrite", False) if allow_overwrite is None else allow_overwrite)
-        datafile = make_datafile_manager(backend)
-        if on_log is not None:
-            on_log(f"Using data-file backend: {backend}")
-            on_log(
-                "Instrument simulation: "
-                f"lakeshore={sim_mode.lakeshore}, ppms={sim_mode.ppms}, "
-                f"global={sim_mode.global_simulation}"
+            data_cfg = config.get("data", {})
+            backend = str(data_cfg.get("backend", "multipyvu")).lower()
+            allow_overwrite = bool(
+                data_cfg.get("allow_overwrite", False)
+                if allow_overwrite is None
+                else allow_overwrite
             )
-        sequence = load_sequence(sequence_path)
-        metadata = {
-            "config_sample_metadata": config.get("sample_metadata", {}),
-            "sequence_metadata": sequence.get("metadata", {}),
-            "run_metadata": run_metadata,
-            "data_backend": backend,
-            "instrument_simulation": {
-                "global": sim_mode.global_simulation,
-                "lakeshore": sim_mode.lakeshore,
-                "ppms": sim_mode.ppms,
-            },
-            "lakeshore": controllers.lakeshore.metadata(),
-        }
-        datafile.create(output_path, metadata=metadata, allow_overwrite=allow_overwrite)
-        self._datafile = datafile
+            datafile = make_datafile_manager(backend)
+            if on_log is not None:
+                on_log(f"Using data-file backend: {backend}")
+                on_log(
+                    "Instrument simulation: "
+                    f"lakeshore={sim_mode.lakeshore}, ppms={sim_mode.ppms}, "
+                    f"global={sim_mode.global_simulation}"
+                )
+            sequence = load_sequence(sequence_path)
+            metadata = {
+                "config_sample_metadata": config.get("sample_metadata", {}),
+                "sample_geometry": config.get("sample_geometry", {}),
+                "sequence_metadata": sequence.get("metadata", {}),
+                "run_metadata": run_metadata,
+                "data_backend": backend,
+                "dry_run": bool(config.get("mode", {}).get("dry_run", False)),
+                "instrument_simulation": {
+                    "global": sim_mode.global_simulation,
+                    "lakeshore": sim_mode.lakeshore,
+                    "ppms": sim_mode.ppms,
+                },
+                "lakeshore": controllers.lakeshore.metadata(),
+            }
+            datafile.create(output_path, metadata=metadata, allow_overwrite=allow_overwrite)
+            self._datafile = datafile
 
-        abort_flag = abort_flag or threading.Event()
-        pause_flag = pause_flag or threading.Event()
-        geometry = geometry_from_config(config)
-        safety = safety_from_config(config)
-        engine = ResistivityMeasurementEngine(
-            lakeshore=controllers.lakeshore,
-            ppms=controllers.ppms,
-            datafile=datafile,
-            geometry=geometry,
-            abort_flag=abort_flag,
-            pause_flag=pause_flag,
-            on_record=on_record,
-            on_log=on_log,
-        )
-        runner = SequenceRunner(
-            ppms=controllers.ppms,
-            lakeshore=controllers.lakeshore,
-            engine=engine,
-            safety=safety,
-            abort_flag=abort_flag,
-            pause_flag=pause_flag,
-            dry_run=bool(config.get("mode", {}).get("dry_run", False)),
-            on_log=on_log,
-        )
-        return RuntimeBundle(controllers=controllers, datafile=datafile, engine=engine, runner=runner)
+            abort_flag = abort_flag or threading.Event()
+            pause_flag = pause_flag or threading.Event()
+            geometry = geometry_from_config(config)
+            safety = safety_from_config(config)
+            engine = ResistivityMeasurementEngine(
+                lakeshore=controllers.lakeshore,
+                ppms=controllers.ppms,
+                datafile=datafile,
+                geometry=geometry,
+                abort_flag=abort_flag,
+                pause_flag=pause_flag,
+                on_record=on_record,
+                on_log=on_log,
+            )
+            runner = SequenceRunner(
+                ppms=controllers.ppms,
+                lakeshore=controllers.lakeshore,
+                engine=engine,
+                safety=safety,
+                abort_flag=abort_flag,
+                pause_flag=pause_flag,
+                dry_run=bool(config.get("mode", {}).get("dry_run", False)),
+                on_step=on_step,
+                on_log=on_log,
+            )
+            return RuntimeBundle(
+                controllers=controllers,
+                datafile=datafile,
+                engine=engine,
+                runner=runner,
+            )
+        except Exception:
+            try:
+                if datafile is not None:
+                    datafile.close()
+            finally:
+                if connect:
+                    try:
+                        controllers.lakeshore.disconnect()
+                    finally:
+                        controllers.ppms.disconnect()
+            raise
 
     def close_datafile(self) -> None:
         if self._datafile is not None:

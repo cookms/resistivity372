@@ -13,7 +13,7 @@ The package is intentionally conservative. It keeps hardware access behind small
 
 ```text
 resistivity372/
-  app/                  PySide6 worker and minimal GUI placeholder
+  app/                  PySide6 lab GUI, worker thread, run models, and widgets
   core/                 dataclasses, safety, geometry, config, logging
   instruments/          LS372, PPMS/MultiPyVu, optional position, mocks
   measurement/          data file manager, measurement engine, sequence runner
@@ -35,7 +35,20 @@ pytest
 python -m resistivity372.main --simulate --dry-run --config configs/example_config.yaml --sequence sequences/field_sweep_10K.yaml --output run_simulated.dat
 ```
 
-The CLI path is mostly for smoke testing. The lab-facing application should use the PySide6 GUI once the panels are filled out.
+The CLI path remains useful for smoke testing. Install GUI dependencies with
+`python -m pip install -e .[dev,gui]`, then launch the lab-facing application with:
+
+```powershell
+python -m resistivity372.main --gui --config configs/example_config.yaml
+```
+
+In the GUI, confirm the textual REAL/SIMULATED and DRY RUN indicators, enter sample
+metadata and geometry, choose the configured data backend and output path, load and
+validate a YAML sequence, then select **Initialize Run** followed by **Start
+Measurement**. Acquisition and data-file writes run in a dedicated `QThread`; records,
+status, plots, and logs return to the GUI through Qt signals. Pause/resume and abort are
+cooperative. Abort stops sequence/acquisition work but does not ramp field, change
+temperature, or change chamber state.
 
 ## Lab/hardware install with bundled MultiPyVu wheel
 
@@ -141,7 +154,10 @@ Before real hardware use, verify these against the installed versions:
 
 ## Safety note
 
-The default emergency-abort behavior stops the measurement and flushes data. It does **not** automatically ramp field to zero or change chamber state unless your lab explicitly enables and reviews that behavior.
+The GUI's **Abort Measurement** action cooperatively stops measurement/sequence work
+and closes the active data file during cleanup. It does **not** automatically ramp field
+to zero, change temperature, or change chamber state. The `emergency_abort` configuration
+is not yet an implemented safe-state policy and requires a separate lab review.
 
 ## Vendored wheel note
 

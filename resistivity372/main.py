@@ -7,8 +7,8 @@ from datetime import datetime
 from pathlib import Path
 
 from resistivity372.core.config import dotted_set, load_yaml_file
-from resistivity372.core.logging_setup import setup_logging
 from resistivity372.core.geometry import geometry_from_config
+from resistivity372.core.logging_setup import setup_logging
 from resistivity372.core.safety import safety_from_config
 from resistivity372.measurement.sequence import load_sequence
 from resistivity372.measurement.sequence_runner import validate_sequence_against_safety
@@ -26,7 +26,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true", help="Validate/log commands but do not send real PPMS setpoints")
     parser.add_argument("--allow-overwrite", action="store_true", help="Allow overwriting existing output file")
     parser.add_argument("--validate-only", action="store_true", help="Load and validate config/sequence, then exit")
-    parser.add_argument("--gui", action="store_true", help="Start PySide6 GUI placeholder")
+    parser.add_argument("--gui", action="store_true", help="Start the PySide6 measurement GUI")
     return parser.parse_args(argv)
 
 
@@ -34,7 +34,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
     if args.gui:
-        from resistivity372.app.gui_main import run_gui
+        try:
+            from resistivity372.app.gui_main import run_gui
+        except Exception as exc:  # pragma: no cover - optional GUI dependency
+            print(
+                "PySide6 and pyqtgraph are required for the GUI. "
+                "Install with: pip install -e .[gui]",
+                file=sys.stderr,
+            )
+            print(str(exc), file=sys.stderr)
+            return 2
         return run_gui(args)
 
     config = load_yaml_file(args.config)
@@ -69,7 +78,7 @@ def main(argv: list[str] | None = None) -> int:
         config=config,
         sequence_path=args.sequence,
         output_path=output,
-        run_metadata={"started_at": datetime.now().isoformat(), "cli": True},
+        run_metadata={"started_at": datetime.now().astimezone().isoformat(), "cli": True},
         simulate=bool(config.get("mode", {}).get("simulation", False)),
         dry_run=bool(config.get("mode", {}).get("dry_run", False)),
         allow_overwrite=args.allow_overwrite,
@@ -102,7 +111,7 @@ def default_output_path(config: dict) -> Path:
     output_dir = Path(data_cfg.get("output_dir", "."))
     sample_id = config.get("sample_metadata", {}).get("sample_id", "sample")
     template = data_cfg.get("filename_template", "{sample_id}_{date}_LS372_resistivity.dat")
-    date = datetime.now().strftime("%Y%m%d_%H%M%S")
+    date = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
     return output_dir / template.format(sample_id=sample_id, date=date)
 
 

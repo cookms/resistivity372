@@ -41,13 +41,14 @@ class SampleGeometry:
         return self.length_m is not None and self.effective_area_m2 is not None
 
     def validate(self) -> None:
-        if not self.has_geometry:
-            return
-        if self.length_m is None or self.length_m <= 0:
+        if self.length_m is not None and self.length_m <= 0:
             raise GeometryError("Voltage-contact length must be positive.")
-        area = self.effective_area_m2
-        if area is None or area <= 0:
+        if self.area_m2 is not None and self.area_m2 <= 0:
             raise GeometryError("Cross-sectional area must be positive.")
+        if self.width_m is not None and self.width_m <= 0:
+            raise GeometryError("Sample width must be positive.")
+        if self.thickness_m is not None and self.thickness_m <= 0:
+            raise GeometryError("Sample thickness must be positive.")
 
     def resistivity(self, resistance_ohm: float | None) -> tuple[float | None, float | None]:
         if resistance_ohm is None or not self.has_geometry:

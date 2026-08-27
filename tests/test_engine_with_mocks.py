@@ -1,5 +1,6 @@
 import csv
 import threading
+import time
 
 from resistivity372.core.geometry import SampleGeometry
 from resistivity372.core.safety import SafetyLimits
@@ -40,3 +41,48 @@ def test_engine_writes_n_points(tmp_path):
     parsed = list(csv.DictReader(rows))
     assert len(parsed) == 3
     assert parsed[0]["Sequence Step Name"] == "test"
+
+
+class MemoryDataFile:
+    def __init__(self):
+        self.records = []
+
+    @property
+    def is_open(self):
+        return True
+
+    def write_record(self, record):
+        self.records.append(record)
+
+
+def test_engine_pause_resume_and_cooperative_abort():
+    ls = MockLakeShore372Controller(noise_ohm=0.0)
+    ppms = MockPPMSController(safety=SafetyLimits())
+    ls.connect()
+    ppms.connect()
+    pause = threading.Event()
+    abort = threading.Event()
+    pause.set()
+    datafile = MemoryDataFile()
+    engine = ResistivityMeasurementEngine(
+        lakeshore=ls,
+        ppms=ppms,
+        datafile=datafile,
+        geometry=SampleGeometry(),
+        abort_flag=abort,
+        pause_flag=pause,
+    )
+    result = []
+    thread = threading.Thread(
+        target=lambda: result.append(engine.measure(channel=1, interval_s=0.005, points=1000))
+    )
+    thread.start()
+    time.sleep(0.03)
+    assert datafile.records == []
+    pause.clear()
+    time.sleep(0.04)
+    abort.set()
+    thread.join(timeout=1.0)
+
+    assert not thread.is_alive()
+    assert 0 < result[0] < 1000

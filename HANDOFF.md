@@ -97,8 +97,8 @@ resistivity372_backbone/
     - `resistivity372 = "resistivity372.main:main"`
   - Supports `--config`, `--sequence`, `--output`, `--simulate`, `--dry-run`, `--allow-overwrite`, `--validate-only`, and `--gui`.
 - `resistivity372/app/gui_main.py`
-  - Starts a minimal PySide6 GUI placeholder via `run_gui(args)`.
-  - The GUI currently does not run the measurement worker.
+  - Starts the functional PySide6 measurement GUI via `run_gui(args)`.
+  - Owns a persistent `QThread` containing `MeasurementWorker` and centralizes UI state.
 - `resistivity372/runtime.py`
   - Builds controllers, data-file writer, measurement engine, and sequence runner through `RuntimeFactory`.
 
@@ -106,8 +106,10 @@ resistivity372_backbone/
 
 - PySide6 is the chosen GUI framework.
 - GUI dependencies are optional under the `gui` extra in `pyproject.toml`.
-- Current GUI is a placeholder window with config, sequence, and output path fields plus placeholder Start and Abort buttons.
-- `app/widgets/*.py` currently contain placeholder classes that raise `NotImplementedError`.
+- The GUI implements run/sample setup, geometry, connection checkout, status, sequence
+  editing/validation, execution controls, live plotting, and application logging.
+- `app/widgets/*.py` contain real PySide6 widgets; `app/models.py` contains Qt-independent
+  metadata, sequence-summary, run-preparation, and control-state models.
 
 ### Core modules and responsibilities
 
@@ -336,7 +338,9 @@ or after editable install:
 resistivity372 --gui --config configs/example_config.yaml
 ```
 
-Important: the current GUI is a placeholder. It does not start a measurement. Use the CLI for current smoke runs, or wire `MeasurementWorker` into a `QThread` before using the GUI for measurement execution.
+The GUI now executes measurements through `MeasurementWorker` in a dedicated `QThread`.
+Use simulation and `sequences/smoke_simulation.yaml` for the first checkout. Real hardware
+and MultiVu compatibility remain unverified as documented below.
 
 ### Run with real Lake Shore 372
 
@@ -671,70 +675,73 @@ Framework:
 Main window/module:
 
 - `resistivity372/app/gui_main.py`.
-- `run_gui(args)` builds a local `MainWindow` class and starts `QApplication`.
+- `MainWindow` is a module-level class suitable for offscreen smoke tests.
+- `run_gui(args)` creates the application/window and enters the Qt event loop.
+- A persistent `QThread` owns `MeasurementWorker`; acquisition and data-file writes stay
+  in that thread, while records/status/logs reach widgets through Qt signals.
 
 Panels/widgets currently present:
 
-- `gui_main.py` includes only a single placeholder main window.
-- It has line edits for:
-  - Config path.
-  - Sequence path.
-  - Output path.
-- It has buttons for:
-  - Browse config.
-  - Browse sequence.
-  - Choose output.
-  - Start placeholder.
-  - Abort placeholder.
-- It has a read-only `QTextEdit` log area.
-- `app/widgets/connection_panel.py`, `status_panel.py`, `geometry_panel.py`, `sequence_editor.py`, `plot_panel.py`, and `log_panel.py` are placeholders that raise `NotImplementedError`.
+- `RunSetupPanel`: structured sample/run metadata, output directory/name, explicit backend
+  run override, suggested filename, final path, and Initialize Run workflow.
+- `GeometryPanel`: length/width/thickness or direct area with units, backed by
+  `SampleGeometry`; missing geometry is allowed and invalid values are rejected.
+- `ConnectionPanel`: persistent REAL/SIMULATED/DRY RUN/backend indicators, configured
+  endpoint details, safety-limit summary, and serialized connection checkout/disconnect.
+- `StatusPanel`: PPMS and LS372 status/readings; unavailable excitation current is `N/A`.
+- `SequenceEditor`: YAML load/reload/edit/save/save-as, safety validation, dirty/validated
+  tracking, and expanded sequence summary.
+- `PlotPanel`: buffered pyqtgraph curve with selectable axes and missing-resistivity handling.
+- `LogPanel`: timestamped worker/error messages plus a Qt-safe Python logging handler.
 
 Connection workflow:
 
-- Not implemented in the GUI.
-- `MeasurementWorker` has a `start_sequence()` slot that creates a runtime bundle and connects instruments indirectly, but it is not currently wired to the GUI or moved to a `QThread` by `gui_main.py`.
+- Connect/Test creates controllers with `RuntimeFactory`, connects and reads one serialized
+  status snapshot in the worker thread, and retains them only for low-frequency idle polling.
+- Starting a run disconnects preview controllers and creates the authoritative runtime bundle.
+- All run-finally paths close the writer and disconnect LS372 and PPMS.
 
 Data-file selection workflow:
 
-- GUI has a file dialog to choose an output path.
-- GUI does not currently pass that path into a worker run.
-- No overwrite confirmation is implemented.
+- Initialize Run validates/prepares the parent directory and records the intended path.
+- Existing destinations require explicit per-run confirmation; backend selection is never
+  silently changed and is passed through effective config to `RuntimeFactory`.
+- Interpretation-changing fields lock from STARTING until cleanup finishes.
 
 Sequence editor status:
 
-- No real sequence editor is implemented.
-- GUI only has a sequence file path picker.
-- `MeasurementWorker.validate_sequence(sequence_path)` can load a sequence and emit a log message, but this is not wired to GUI controls.
+- The editor validates parsed version-1 YAML against configured `SafetyLimits` without
+  connecting hardware. Edited text must be validated and saved before a run is READY.
+- Summary includes expanded step count, targets/ramps, measurement channels and point or
+  duration totals, plus chamber/position command presence.
 
 Start/stop/abort behavior:
 
-- GUI `Start placeholder` only logs the selected paths.
-- GUI `Abort placeholder` only logs a message.
-- Real pause/resume/abort logic exists in `MeasurementWorker`, `SequenceRunner`, and `ResistivityMeasurementEngine`, but is not connected to the GUI.
+- Central states are IDLE, CONFIGURING, READY, STARTING, RUNNING, PAUSED, ABORTING,
+  COMPLETED, and ERROR. A Qt-independent mapping controls button availability.
+- Pause/resume/abort set the existing thread-safe events directly so requests remain
+  possible while `start_run()` occupies the worker event loop.
+- Abort is cooperative only. It does not zero field, change temperature/chamber, or imply
+  an emergency hardware shutdown. A blocking driver call limits response until it returns.
 
 Live status display:
 
-- Not implemented.
-- Status rows/labels need to be built, probably in `app/widgets/status_panel.py`.
+- Idle status uses low-frequency worker polling after explicit Connect/Test.
+- During acquisition, existing `MeasurementRecord` objects update status and latest values;
+  widgets and plots do not query hardware again.
 
 Live plotting:
 
-- Not implemented.
-- `pyqtgraph` is listed in the `gui` extra but not used yet.
+- `PlotPanel` updates one existing pyqtgraph curve from a bounded visual record buffer.
+- X choices: elapsed time, PPMS temperature, PPMS field. Y choices: resistance,
+  resistivity in Ohm m/Ohm cm, quadrature, and LS372 temperature.
 
-Missing or incomplete GUI features:
+Remaining GUI limitations:
 
-- Real connection panel.
-- Real status panel.
-- Geometry input panel.
-- Sequence editor or table/YAML editor.
-- Worker/QThread wiring.
-- Start/pause/resume/abort state machine.
-- Live plot.
-- File overwrite confirmation.
-- Safety confirmation dialogs.
-- Config editing/loading into GUI controls.
-- Error dialogs and clear user-facing messages.
+- Connect/Test is a checkout connection, not a promise that the same socket is reused for a run.
+- Status polling cannot interrupt a blocking driver call and does not run concurrently with
+  sequence operations; acquisition records are the run-time status source.
+- No reviewed emergency safe-state policy is implemented.
 
 ## 7. Measurement Sequence System
 
@@ -770,7 +777,7 @@ Current execution model:
 
 - `SequenceRunner.run(sequence)` validates the sequence, expands loops, then executes each step in order on the current thread.
 - In CLI mode this happens in the main process/thread.
-- In the intended GUI path it should happen inside `MeasurementWorker` running in a `QThread`; this is not yet wired in `gui_main.py`.
+- In GUI mode it runs inside `MeasurementWorker` in a dedicated `QThread`.
 - Each step checks `abort_flag` between steps.
 - Measurement loops and wait loops also check abort flags.
 
@@ -1149,14 +1156,17 @@ Recommended next tests:
 
 - CLI smoke test using `subprocess.run()` and `sequences/smoke_simulation.yaml`.
 - `validate-only` test proving no data file is created.
-- Engine abort test.
-- Engine pause/resume test.
 - Consecutive read error stop test.
-- Sequence validation tests for missing required keys.
-- `MultiVuDataFileManager` test behind an optional marker when MultiPyVu is installed.
-- GUI import/startup smoke test behind an optional marker when PySide6 is installed.
-- Mock PPMS tests for chamber and position safety validation.
-- Hardware-gated test for `scripts/verify_lakeshore_gpib.py` after the lab VISA stack is confirmed.
+- Optional `MultiVuDataFileManager` test when MultiPyVu is installed.
+- Hardware-gated tests after the lab VISA/MultiPyVu stacks are confirmed.
+
+New GUI milestone coverage now includes:
+
+- worker success/failure cleanup and signal emission;
+- engine cooperative pause/resume/abort;
+- Qt-independent metadata/effective-config/summary/control-state behavior;
+- malformed sequence and measurement-interval validation;
+- offscreen `MainWindow` construction and clean `QThread` shutdown.
 
 ## 13. Known Limitations and Technical Debt
 
@@ -1170,15 +1180,10 @@ Recommended next tests:
 - `LakeShoreReading.excitation_current_A` is not populated by the real controller.
 - PPMS position control is partially implemented but unverified and not integrated as a first-class runtime adapter.
 - Chamber command support and enum names need verification on the installed PPMS/MultiPyVu version.
-- GUI is a placeholder and cannot run measurements yet.
-- Widget modules under `app/widgets/` are placeholders that raise `NotImplementedError`.
-- Sequence editor is not implemented.
-- Live plotting is not implemented.
-- GUI overwrite confirmation is not implemented.
-- GUI safety confirmations are not implemented.
-- GUI geometry validation is not implemented.
-- `MeasurementWorker` is not wired into `gui_main.py` and is not moved to a `QThread`.
-- `MeasurementWorker` closes the data file but does not disconnect instruments after a run.
+- GUI connection checkout has not been tested against real instruments.
+- The real-hardware confirmation is operator visibility, not an additional safety layer.
+- Abort responsiveness remains limited until a blocking driver call returns.
+- The GUI does not write an automatic abort marker row.
 - Emergency-abort config exists but no emergency-abort policy is implemented.
 - No automatic abort marker row is written to the data file.
 - `MeasurementAborted` exception class exists but is unused.
@@ -1190,7 +1195,8 @@ Recommended next tests:
 - No hardware dry-run/read-only commands for checking a single LS372 channel or PPMS status.
 - No typed schema library such as Pydantic or JSON Schema; validation is hand-rolled.
 - `PACKAGE_FILE_LIST.txt` may become stale if files are added and should not be treated as authoritative.
-- Grep found placeholder/TODO-like content in `README.md`, `main.py`, `app/gui_main.py`, and every `app/widgets/*.py`; no literal `TODO` or `FIXME` comments were found.
+- The original phase/checklist sections below are retained as project history; the GUI
+  milestone update at the end of this document is authoritative for current GUI status.
 
 ## 14. Recommended Development Sequence / Next Steps
 
@@ -1438,9 +1444,15 @@ Likely files/modules touched:
 
 ## 17. Final Handoff Summary
 
-What works now: the repository is a buildable Python package skeleton with mock LS372/PPMS controllers, safety and geometry models, YAML sequence loading with loop expansion, a synchronous sequence runner, a measurement engine, a CSV fallback data writer, a MultiPyVu DataFile wrapper, CLI smoke execution, and mock-based tests.
+What works now: the repository is a buildable Python package with mock LS372/PPMS
+controllers, safety and geometry models, YAML sequence loading with loop expansion, a
+synchronous CLI runner, a threaded functional PySide6 GUI, CSV and MultiPyVu writer
+selection, live records/status/plots/logs, cooperative controls, and mock-based tests.
 
-What is most risky: none of the real hardware interfaces or MultiVu-compatible data output have been validated against the installed lab software. The GUI is only a placeholder and cannot run measurements yet. Position, chamber, and LS372 channel configuration are especially dependent on actual installed hardware and driver enum names.
+What is most risky: none of the real hardware interfaces or MultiVu-compatible data output
+have been validated against the installed lab software. Position, chamber, LS372 channel
+configuration, blocking-driver abort latency, and emergency safe-state policy remain
+especially dependent on actual hardware and lab review.
 
 What the next agent should do first: start with a clean virtual environment, run the tests and mock smoke sequence, then add read-only hardware checkout commands. After that, verify LS372 and MultiPyVu APIs one at a time before changing any real PPMS setpoints or relying on generated `.dat` files in MultiVu.
 
@@ -1562,3 +1574,112 @@ Immediate validation task:
 4. Confirm the output file contains changing or stable real LS372 resistance values and
    simulated PPMS temperature/field status.
 5. Only after that, repeat with the real PPMS MultiPyVu server using a read-only sequence.
+
+## Update Note - First Functional GUI Milestone (2026-08-27)
+
+This update supersedes older placeholder-GUI statements retained in the historical sections
+above.
+
+### Architecture and thread ownership
+
+- `resistivity372/app/gui_main.py` now provides a real `MainWindow` and owns one persistent
+  `QThread`.
+- `MeasurementWorker` is moved to that thread. It owns connection checkout, runtime-bundle
+  creation, sequence execution, instrument reads, and data-file writes.
+- Widgets update only from Qt signals. `recordReady` is the source for latest measurement
+  values and plots; no plot/status widget re-reads hardware during acquisition.
+- Pause/resume/abort operate on the existing `threading.Event` objects. They are deliberately
+  direct, thread-safe flag requests because a queued slot could not execute while the worker
+  is synchronously running a sequence.
+- Idle Connect/Test and status polling are serialized through the same worker thread.
+- Runtime construction now cleans partial connections/files on failure. Worker success,
+  error, and abort cleanup closes the writer and disconnects both controllers.
+
+### GUI workflow
+
+1. Launch with `python -m resistivity372.main --gui --config configs/example_config.yaml`.
+2. Load/confirm the base YAML configuration and textual REAL/SIMULATED, DRY RUN, backend,
+   endpoint, and safety-limit indicators.
+3. Enter sample/run metadata and geometry. Incomplete geometry is allowed and produces
+   resistance-only output; invalid supplied values block initialization.
+4. Choose output directory/name and the explicit per-run backend override.
+5. Load/edit a version-1 YAML sequence, select Validate, and save if it was edited.
+6. Review the expanded summary, then select Initialize Run. Existing files require explicit
+   overwrite confirmation.
+7. Select Start Measurement. Interpretation-changing fields lock through cleanup.
+8. Use Pause/Resume or Abort Measurement as needed. Abort is cooperative logging/sequence
+   stop only and sends no automatic PPMS safe-state commands.
+9. Monitor latest values, status tabs, selectable pyqtgraph axes, and timestamped logs.
+
+### Files added
+
+- `resistivity372/app/models.py`: metadata, run preparation, application/control states,
+  effective-config merge, sequence summary, and filename suggestion.
+- `resistivity372/app/widgets/run_setup_panel.py`: metadata/output/backend/initialization UI.
+- `tests/test_app_models.py`: nonvisual GUI-model and state tests.
+- `tests/test_qt_worker.py`: worker signals, mock run, and success/failure cleanup tests.
+- `tests/test_gui_smoke.py`: offscreen main-window and `QThread` shutdown smoke test.
+
+### Major files modified
+
+- `app/gui_main.py`, `app/qt_worker.py`, and every original widget module: functional GUI,
+  worker lifecycle, live status/plot/log, sequence editor, and geometry/connection panels.
+- `runtime.py`: robust partial failure cleanup, step callbacks, richer metadata, and optional
+  controller reuse hook without changing CLI architecture.
+- `core/geometry.py`: rejects any supplied nonpositive dimension while continuing to allow
+  genuinely missing/incomplete geometry.
+- `measurement/sequence.py` and `sequence_runner.py`: reusable text-parse entry point,
+  clearer malformed-step validation, positive acquisition validation, and command/wait logs.
+- `main.py`: functional GUI help text and friendly missing-GUI-dependency error.
+- `README.md`: GUI launch/workflow and precise cooperative-abort semantics.
+
+### Verification completed
+
+Using Python 3.12 with temporary PySide6/pyqtgraph/PyYAML/pytest dependencies:
+
+```text
+pytest -q
+39 passed in 6.78s
+
+python -m compileall -q resistivity372
+success
+
+python -m resistivity372.main --validate-only --config configs/example_config.yaml --sequence sequences/smoke_simulation.yaml
+success
+
+python -m resistivity372.main --simulate --dry-run --config configs/example_config.yaml --sequence sequences/smoke_simulation.yaml --output <temporary-path> --allow-overwrite
+success; six resistance/resistivity records written with CSV backend
+```
+
+The pytest result includes offscreen GUI lifecycle and end-to-end mock-run tests plus the
+worker mock-sequence test.
+No real LS372, PPMS, or MultiVu application was used for this verification.
+
+### Mixed-mode GUI checkout
+
+Launch the same GUI with:
+
+```powershell
+python -m resistivity372.main --gui `
+  --config configs/desktop_lakeshore_gpib_multipyvu_sim.yaml `
+  --sequence sequences/desktop_readonly_smoke.yaml
+```
+
+The GUI uses the existing per-instrument mode resolver and runtime factory, so no separate
+mixed-mode GUI path exists. Start the MultiPyVu scaffolding server first, verify the VISA
+resource independently, use Connect/Test, then select an output and run the read-only
+sequence. For an internal mock PPMS, set `ppms.simulation: true` in a separate/local config.
+
+### Remaining limitations and recommended next step
+
+- Real LS372 connection/read keys, transport behavior, and safe excitation remain unverified.
+- Real MultiPyVu client calls/enums, chamber commands, and position support remain unverified.
+- MultiPyVu writer flush/close behavior and MultiVu `.dat` compatibility remain unverified.
+- No emergency PPMS safe-state policy or automatic abort-marker row is implemented.
+- Abort cannot interrupt a blocking driver call.
+- Connect/Test reconnects for the authoritative run instead of promising socket reuse.
+
+Recommended next development step: perform supervised, read-only mixed-mode checkout with
+the real LS372 and MultiPyVu scaffolding server, then validate a generated MultiPyVu `.dat`
+file in MultiVu. Do not enable real PPMS setpoints until the connection/enums, safety limits,
+and lab abort/safe-state policy have been explicitly reviewed.
