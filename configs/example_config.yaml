@@ -1,0 +1,98 @@
+mode:
+  simulation: true
+  dry_run: true
+
+lakeshore372:
+  simulation: true
+  connection:
+    # Supported modes: "tcp", "usb", "gpib".
+    mode: "tcp"
+
+    # TCP/IP mode.
+    ip_address: "192.168.1.50"
+    tcp_port: 7777
+
+    # USB/serial mode.
+    com_port: null
+    serial_number: null
+
+    # GPIB mode via PyVISA. Either specify a full VISA resource string or
+    # provide gpib_board/gpib_address to build GPIB<board>::<address>::INSTR.
+    # Example: mode: "gpib", gpib_resource: "GPIB0::12::INSTR"
+    gpib_resource: null
+    gpib_board: 0
+    gpib_address: null
+    visa_library: null       # usually null; e.g. "@py" only if using pyvisa-py
+    read_termination: "\n"
+    write_termination: "\n"
+
+    baud_rate: 57600
+    timeout_s: 2.0
+  default_channel: 1
+  configure_on_connect: false
+
+ppms:
+  simulation: true
+  host: "127.0.0.1"
+  port: 5000
+  socket_timeout_s: 10.0
+  platform: "ppms"
+  use_position: false
+
+data:
+  output_dir: "."
+  filename_template: "{sample_id}_{date}_LS372_resistivity.dat"
+  allow_overwrite: false
+  backend: "csv"       # use "multipyvu" for real MultiVu-compatible output
+
+sample_metadata:
+  sample_id: "Sample-001"
+  operator: "Lab user"
+  description: "LS372 + PPMS resistivity measurement"
+
+sample_geometry:
+  length:
+    value: 1.20
+    unit: "mm"
+  width:
+    value: 0.50
+    unit: "mm"
+  thickness:
+    value: 20.0
+    unit: "um"
+
+safety:
+  temperature_min_K: 1.8
+  temperature_max_K: 350.0
+  temperature_rate_max_K_per_min: 5.0
+  field_abs_max_T: 9.0
+  field_rate_max_T_per_min: 0.25
+  allowed_chamber_modes:
+    - "seal"
+    - "purge_seal"
+    - "vent_seal"
+    - "pump_continuous"
+    - "vent_continuous"
+    - "high_vacuum"
+  position_min_deg: -180.0
+  position_max_deg: 180.0
+  position_rate_max_deg_per_s: 5.0
+
+emergency_abort:
+  stop_measurement: true
+  flush_data_file: true
+  set_field_to_zero: false
+  zero_field_rate_T_per_min: 0.1
+  leave_temperature_unchanged: true
+  change_chamber_on_abort: false
+
+logging:
+  log_dir: "./logs"
+  level: "INFO"
+  rotate_bytes: 5000000
+  backups: 10
+
+gui:
+  plot_enabled: true
+  plot_max_points: 5000
+  refresh_interval_ms: 1000

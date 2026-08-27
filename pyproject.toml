@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "resistivity372"
+version = "0.1.0"
+description = "Backbone for LS372 + PPMS/MultiPyVu resistivity measurements"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+  {name = "Lab Instrumentation Team"}
+]
+dependencies = [
+  "PyYAML>=6.0",
+  "numpy>=1.23"
+]
+
+[project.optional-dependencies]
+gui = [
+  "PySide6>=6.6",
+  "pyqtgraph>=0.13"
+]
+hardware = [
+  # MultiPyVu is intentionally not listed here because the lab currently installs
+  # it from a local Quantum Design wheel. Use requirements-lab.txt to install
+  # the vendored wheel plus these hardware-facing dependencies.
+  "lakeshore>=1.10.0",
+  "pyvisa>=1.14",
+  "pandas>=1.5",
+  "pillow>=9.0",
+  "pywin32>=300; platform_system == 'Windows'"
+]
+multipyvu-pypi = [
+  # Use only on systems where pip can successfully resolve/install MultiPyVu.
+  "MultiPyVu==2.2.0"
+]
+dev = [
+  "pytest>=7.0",
+  "ruff>=0.5"
+]
+all = [
+  "PySide6>=6.6",
+  "pyqtgraph>=0.13",
+  "lakeshore>=1.10.0",
+  "pyvisa>=1.14",
+  "pandas>=1.5",
+  "pillow>=9.0",
+  "pywin32>=300; platform_system == 'Windows'",
+  "pytest>=7.0",
+  "ruff>=0.5"
+]
+
+[project.scripts]
+resistivity372 = "resistivity372.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["resistivity372*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

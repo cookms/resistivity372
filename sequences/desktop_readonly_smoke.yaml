@@ -1,0 +1,19 @@
+version: 1
+
+metadata:
+  description: "Read-only desktop smoke test: real LS372 readout plus PPMS/MultiPyVu simulated status"
+  safety_note: "This sequence sends no PPMS setpoint commands. It only reads status and measures LS372 resistance."
+
+steps:
+  - name: "Start marker"
+    comment: "Starting desktop read-only LS372 + MultiPyVu simulation smoke test."
+
+  - name: "Read LS372 resistance and PPMS status"
+    measure:
+      channel: 1
+      interval_s: 1.0
+      points: 20
+      name: "desktop-readonly-smoke"
+
+  - name: "End marker"
+    comment: "Desktop read-only smoke test complete."

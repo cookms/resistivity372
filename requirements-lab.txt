@@ -1,0 +1,11 @@
+# Lab install requirements for resistivity372.
+# Run from the repository root:
+#   python -m pip install -r requirements-lab.txt
+#
+# MultiPyVu is installed from the bundled Quantum Design wheel because some
+# lab machines cannot install it reliably from PyPI. The hardware extra also
+# installs pyvisa for Lake Shore GPIB support; the lab PC still needs NI-VISA
+# or another suitable VISA backend installed outside Python.
+
+-e .[gui,hardware]
+./vendor/wheels/MultiPyVu-2.2.0-py3-none-any.whl

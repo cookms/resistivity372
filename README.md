@@ -1,0 +1,258 @@
+# resistivity372 backbone
+
+This is a basic, buildable Python backbone for GUI-driven resistivity measurements using:
+
+- Lake Shore 372 AC Resistance Bridge for resistance readings.
+- Quantum Design PPMS/MultiVu through MultiPyVu for environment control.
+- MultiPyVu `DataFile` for MultiVu-compatible `.dat` output when the hardware stack is installed.
+- Mock controllers and CSV fallback logging for development without instruments.
+
+The package is intentionally conservative. It keeps hardware access behind small controller classes, runs sequences through a safety validator, and lets tests exercise the measurement engine using mocks.
+
+## What is included
+
+```text
+resistivity372/
+  app/                  PySide6 worker and minimal GUI placeholder
+  core/                 dataclasses, safety, geometry, config, logging
+  instruments/          LS372, PPMS/MultiPyVu, optional position, mocks
+  measurement/          data file manager, measurement engine, sequence runner
+configs/                example configuration
+sequences/              example YAML field-sweep sequence
+scripts/                Windows-friendly install helpers and verification utilities
+vendor/wheels/          lab-supplied local wheels, currently MultiPyVu 2.2.0
+tests/                  mock-based unit tests
+```
+
+## Quick start in simulation mode
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements-sim.txt
+pytest
+python -m resistivity372.main --simulate --dry-run --config configs/example_config.yaml --sequence sequences/field_sweep_10K.yaml --output run_simulated.dat
+```
+
+The CLI path is mostly for smoke testing. The lab-facing application should use the PySide6 GUI once the panels are filled out.
+
+## Lab/hardware install with bundled MultiPyVu wheel
+
+The current lab workflow installs MultiPyVu from a local wheel instead of resolving it from PyPI. This repository therefore includes the lab-supplied wheel at:
+
+```text
+vendor/wheels/MultiPyVu-2.2.0-py3-none-any.whl
+```
+
+Install the app, GUI dependencies, hardware dependencies, and bundled MultiPyVu wheel with:
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements-lab.txt
+python scripts/verify_multipyvu_install.py
+```
+
+Or use the PowerShell helper:
+
+```powershell
+.\scripts\install_lab.ps1
+python scripts/verify_multipyvu_install.py
+```
+
+`requirements-lab.txt` intentionally installs `MultiPyVu` from `vendor/wheels/` and does not depend on `pip install MultiPyVu` working from the package index.
+
+## Hardware install using PyPI MultiPyVu, if available
+
+If a machine can install MultiPyVu from the package index, this optional extra is available:
+
+```powershell
+pip install -e .[gui,hardware,multipyvu-pypi]
+```
+
+For the lab PCs where PyPI install is unreliable, prefer `requirements-lab.txt`.
+
+
+## Lake Shore 372 GPIB connection
+
+The Lake Shore controller now supports three connection modes: `tcp`, `usb`, and `gpib`.
+GPIB uses PyVISA and passes the opened VISA resource into the Lake Shore driver as
+an alternate connection object. On Windows lab PCs, install NI-VISA/NI-488.2 or the
+appropriate vendor VISA stack first, then install `requirements-lab.txt`.
+
+Example `configs/example_config.yaml` settings for GPIB address 12 on board 0:
+
+```yaml
+lakeshore372:
+  simulation: false
+  connection:
+    mode: "gpib"
+    gpib_resource: "GPIB0::12::INSTR"
+    # Alternatively, omit gpib_resource and use:
+    # gpib_board: 0
+    # gpib_address: 12
+    baud_rate: 57600
+    timeout_s: 2.0
+    read_termination: "\n"
+    write_termination: "\n"
+```
+
+If your VISA setup needs a specific backend, set `visa_library`. For normal NI-VISA
+installations this should usually stay `null`.
+
+## Running with PPMS/MultiVu
+
+Start MultiVu first, then start the MultiPyVu server on the MultiVu computer, for example:
+
+```powershell
+python -m MultiPyVu
+```
+
+Then run the GUI:
+
+```powershell
+resistivity372 --gui --config configs/example_config.yaml
+```
+
+For remote operation, set the PPMS host/port in `configs/example_config.yaml`.
+
+## Important API verification items
+
+Before real hardware use, verify these against the installed versions:
+
+1. Lake Shore 372 connection parameters for your lab connection type, including GPIB VISA resource strings if used.
+2. Lake Shore enum names used by any optional channel configuration preset.
+3. MultiPyVu enum names for temperature approach, field approach, field driven mode, and chamber modes.
+4. Whether installed `MultiPyVu.DataFile` exposes a public flush/close method.
+5. Whether position/rotator control is present in your installed PPMS/MultiPyVu configuration.
+6. Whether the bundled `MultiPyVu-2.2.0` wheel matches the MultiVu environment on the PPMS computer.
+
+## Development strategy
+
+1. Run all tests with mocks.
+2. Run the CLI in `--simulate --dry-run` mode.
+3. Run against MultiPyVu's scaffold/test server, if available.
+4. Connect to PPMS only and read status for a while.
+5. Connect to LS372 only and read one selected channel for a while.
+6. Create a test MultiVu `.dat` file and confirm it opens in MultiVu.
+7. Only then enable real PPMS setpoint commands.
+
+## Safety note
+
+The default emergency-abort behavior stops the measurement and flushes data. It does **not** automatically ramp field to zero or change chamber state unless your lab explicitly enables and reviews that behavior.
+
+## Vendored wheel note
+
+The bundled MultiPyVu wheel is a practical lab-internal workaround, not a long-term packaging policy. Before publishing this repository or distributing it outside the lab, review the license and redistribution terms for the exact wheel in `vendor/wheels/`.
+
+## Selecting the data-file backend
+
+`mode.simulation` now controls only the instrument layer. It does **not** force the
+CSV fallback writer. This means you can run mock LS372/PPMS instruments while still
+creating a real `MultiPyVu.DataFile` output file:
+
+```yaml
+data:
+  backend: "multipyvu"
+```
+
+Use this command after the lab install to verify the MultiPyVu backend without
+connecting to instruments:
+
+```powershell
+python scripts\smoke_multipyvu_datafile.py --output multipyvu_backend_smoke.dat --allow-overwrite
+```
+
+A true MultiPyVu-backed file should contain a MultiVu-style `[Header]` section and a
+`[Data]` section. The CSV fallback file starts with:
+
+```text
+# CSV fallback backend, not guaranteed MultiVu-compatible
+```
+
+For development machines without a working MultiPyVu import, keep:
+
+```yaml
+data:
+  backend: "csv"
+```
+
+or run the CLI with an output/config that explicitly selects `csv`. The application no
+longer silently falls back from `multipyvu` to `csv`; a failed MultiPyVu import or
+`DataFile` creation now raises an explicit data-file error.
+
+## Desktop test: real LS372 over GPIB + MultiPyVu simulation
+
+For the desktop setup where the Lake Shore 372 is physically connected over GPIB but
+no real PPMS is connected, use the mixed-mode desktop config:
+
+```text
+configs/desktop_lakeshore_gpib_multipyvu_sim.yaml
+sequences/desktop_readonly_smoke.yaml
+```
+
+This mode uses:
+
+- real `RealLakeShore372Controller` through GPIB/PyVISA;
+- real `RealPPMSController` through `MultiPyVu.Client`, pointed at a MultiPyVu
+  scaffolding/simulation server;
+- the selected data backend, usually `multipyvu`;
+- a read-only sequence that sends no PPMS setpoint commands.
+
+Start the MultiPyVu simulation/scaffolding server first. Then run, adjusting the GPIB
+resource for your instrument:
+
+```powershell
+python scripts\run_desktop_gpib_multipyvu_sim_test.py `
+  --gpib-resource GPIB0::12::INSTR `
+  --channel 1 `
+  --points 20 `
+  --interval 1 `
+  --output desktop_gpib_test.dat `
+  --allow-overwrite
+```
+
+If the MultiPyVu simulation/scaffolding server is not available and you only want to
+validate the real LS372 read path plus the measurement engine, add `--ppms-mock`:
+
+```powershell
+python scripts\run_desktop_gpib_multipyvu_sim_test.py `
+  --gpib-resource GPIB0::12::INSTR `
+  --channel 1 `
+  --points 20 `
+  --interval 1 `
+  --output desktop_gpib_ppms_mock_test.dat `
+  --backend csv `
+  --ppms-mock `
+  --allow-overwrite
+```
+
+The read-only desktop smoke sequence only reads PPMS status and Lake Shore resistance.
+It does not call `set_temperature`, `set_field`, `set_chamber`, or `set_position`.
+That makes it suitable for checking the desktop acquisition path before connecting to
+an actual PPMS.
+
+### Per-instrument simulation settings
+
+The package now supports mixed instrument modes. The old global setting still works:
+
+```yaml
+mode:
+  simulation: true   # mocks both LS372 and PPMS
+```
+
+For mixed mode, set global simulation false and control each instrument separately:
+
+```yaml
+mode:
+  simulation: false
+
+lakeshore372:
+  simulation: false  # real Lake Shore 372
+
+ppms:
+  simulation: false  # real MultiPyVu.Client; can connect to a simulated server
+  # simulation: true # internal mock PPMS, no MultiPyVu server needed
+```

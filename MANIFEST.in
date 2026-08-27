@@ -1,0 +1,10 @@
+include README.md
+include HANDOFF.md
+include PACKAGE_FILE_LIST.txt
+include requirements-lab.txt
+include requirements-sim.txt
+recursive-include configs *.yaml
+recursive-include sequences *.yaml
+recursive-include scripts *.ps1 *.py
+recursive-include vendor/wheels *.whl README.md
+recursive-include tests *.py

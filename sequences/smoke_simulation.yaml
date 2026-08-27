@@ -1,0 +1,36 @@
+version: 1
+metadata:
+  sample_id: "SmokeTest"
+  description: "Fast mock-only smoke sequence"
+steps:
+  - name: "Smoke start"
+    comment: "Beginning fast mock smoke test"
+  - name: "Set simulated temperature"
+    set_temperature:
+      setpoint_K: 10.0
+      rate_K_per_min: 2.0
+      approach: "fast_settle"
+      wait: false
+  - name: "Small simulated field loop"
+    loop:
+      variable: "field_T"
+      values: [-0.1, 0.0, 0.1]
+      steps:
+        - name: "Set field ${field_T} T"
+          set_field:
+            setpoint_T: "${field_T}"
+            rate_T_per_min: 0.1
+            approach: "linear"
+            wait: false
+        - name: "Measure ${field_T} T"
+          measure:
+            channel: 1
+            interval_s: 0.01
+            points: 2
+            name: "smoke B=${field_T} T"
+  - name: "Return simulated field to zero"
+    set_field:
+      setpoint_T: 0.0
+      rate_T_per_min: 0.1
+      approach: "linear"
+      wait: false

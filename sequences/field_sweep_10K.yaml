@@ -1,0 +1,56 @@
+version: 1
+
+metadata:
+  sample_id: "Sample-001"
+  operator: "Lab user"
+  description: "LS372 resistivity vs field at 10 K"
+
+steps:
+  - name: "Start marker"
+    comment: "Beginning LS372/PPMS resistivity run"
+
+  - name: "Set temperature to 10 K"
+    set_temperature:
+      setpoint_K: 10.0
+      rate_K_per_min: 2.0
+      approach: "fast_settle"
+      wait: true
+      timeout_s: 7200
+      settle_s: 1
+
+  - name: "Sweep field from -9 T to +9 T"
+    loop:
+      variable: "field_T"
+      start: -9.0
+      stop: 9.0
+      step: 1.0
+      steps:
+        - name: "Set field ${field_T} T"
+          set_field:
+            setpoint_T: "${field_T}"
+            rate_T_per_min: 0.2
+            approach: "linear"
+            driven_mode: "driven"
+            wait: true
+            timeout_s: 7200
+            settle_s: 1
+
+        - name: "Measure at ${field_T} T"
+          measure:
+            channel: 1
+            interval_s: 0.05
+            points: 3
+            name: "B=${field_T} T"
+
+  - name: "Return field to zero"
+    set_field:
+      setpoint_T: 0.0
+      rate_T_per_min: 0.2
+      approach: "linear"
+      driven_mode: "driven"
+      wait: true
+      timeout_s: 7200
+      settle_s: 1
+
+  - name: "End marker"
+    comment: "Run complete; field returned to zero"

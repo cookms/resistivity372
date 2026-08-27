@@ -1,0 +1,5 @@
+# Simulation/development install without hardware drivers.
+# Run from the repository root:
+#   python -m pip install -r requirements-sim.txt
+
+-e .[dev]

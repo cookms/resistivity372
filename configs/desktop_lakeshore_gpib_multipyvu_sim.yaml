@@ -1,0 +1,76 @@
+# Desktop mixed-mode test configuration.
+# Intended use:
+#   - real Lake Shore 372 connected over GPIB
+#   - MultiPyVu.Client connected to a MultiPyVu scaffolding/simulation server
+#   - no actual PPMS required
+#
+# Start the MultiPyVu simulation/scaffolding server separately, then run:
+#   python -m resistivity372.main --config configs/desktop_lakeshore_gpib_multipyvu_sim.yaml --sequence sequences/desktop_readonly_smoke.yaml --output desktop_test.dat --allow-overwrite
+
+mode:
+  # Keep global simulation false so per-instrument settings below take effect.
+  simulation: false
+  dry_run: false
+
+lakeshore372:
+  # Real Lake Shore hardware will be used.
+  simulation: false
+  connection:
+    mode: "gpib"
+    gpib_resource: "GPIB0::12::INSTR"   # Edit for your GPIB address.
+    gpib_board: 0
+    gpib_address: 12
+    visa_library: null
+    read_termination: "\n"
+    write_termination: "\n"
+    timeout_s: 3.0
+    baud_rate: 57600
+  default_channel: 1
+  configure_on_connect: false
+
+ppms:
+  # false means use RealPPMSController, which connects to MultiPyVu.Client.
+  # For desktop testing, point this at a MultiPyVu scaffolding/simulation server.
+  simulation: false
+  host: "127.0.0.1"
+  port: 5000
+  socket_timeout_s: 10.0
+  platform: "ppms"
+  use_position: false
+
+data:
+  output_dir: "."
+  filename_template: "desktop_gpib_multipyvu_sim_{date}.dat"
+  allow_overwrite: false
+  backend: "multipyvu"
+
+sample_metadata:
+  sample_id: "Desktop-GPIB-Test"
+  operator: "Lab user"
+  description: "Real LS372 over GPIB plus MultiPyVu simulation/scaffolding read-only test"
+
+# Empty geometry is valid. The file will contain resistance, while resistivity columns are blank/NaN.
+sample_geometry: {}
+
+safety:
+  temperature_min_K: 1.8
+  temperature_max_K: 350.0
+  temperature_rate_max_K_per_min: 5.0
+  field_abs_max_T: 9.0
+  field_rate_max_T_per_min: 0.25
+  allowed_chamber_modes:
+    - "seal"
+    - "purge_seal"
+    - "vent_seal"
+    - "pump_continuous"
+    - "vent_continuous"
+    - "high_vacuum"
+  position_min_deg: -180.0
+  position_max_deg: 180.0
+  position_rate_max_deg_per_s: 5.0
+
+logging:
+  log_dir: "./logs"
+  level: "INFO"
+  rotate_bytes: 5000000
+  backups: 10
