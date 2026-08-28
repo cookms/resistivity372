@@ -1,0 +1,2 @@
+[console_scripts]
+resistivity372 = resistivity372.main:main

@@ -1,0 +1,41 @@
+metadata:
+  experiment_type: rho_vs_t_continuous
+  generated_by: resistivity372 transport sequence builder
+steps:
+- comment: rho vs T - continuous sweep
+  name: Generated transport sequence
+- name: Set field 0 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.1
+    setpoint_T: 0.0
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- name: Stabilize at 2 K
+  set_temperature:
+    approach: fast_settle
+    rate_K_per_min: 2.0
+    setpoint_K: 2.0
+    settle_s: 10.0
+    timeout_s: 7200.0
+    wait: true
+- name: Ramp temperature to 30 K
+  set_temperature:
+    approach: fast_settle
+    rate_K_per_min: 2.0
+    setpoint_K: 30.0
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: false
+- measure_until:
+    channel: 1
+    interval_s: 1.0
+    quantity: temperature
+    require_stable: true
+    settle_s: 0.0
+    target: 30.0
+    timeout_s: 7200.0
+    tolerance: 0.05
+  name: Acquire rho(T) at 0 T
+version: 1

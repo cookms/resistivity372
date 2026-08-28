@@ -158,6 +158,7 @@ resistivity372_backbone/
 - `measurement/engine.py`
   - `ResistivityMeasurementEngine`.
   - Periodic readout, resistivity calculation, writing records, pause/abort checks.
+  - Target-terminated acquisition during continuous temperature or field ramps.
 - `measurement/sequence.py`
   - YAML sequence loading.
   - Loop expansion and variable substitution.
@@ -710,10 +711,13 @@ Data-file selection workflow:
 
 Sequence editor status:
 
+- The Transport Sequence Builder provides stepped and continuous temperature and field
+  templates. It emits ordinary version-1 YAML into the existing preview/editor; generated
+  text must still be reviewed, validated, and saved before a run becomes READY.
 - The editor validates parsed version-1 YAML against configured `SafetyLimits` without
   connecting hardware. Edited text must be validated and saved before a run is READY.
 - Summary includes expanded step count, targets/ramps, measurement channels and point or
-  duration totals, plus chamber/position command presence.
+  duration totals, target-terminated acquisitions, plus chamber/position command presence.
 
 Start/stop/abort behavior:
 
@@ -764,6 +768,7 @@ Parsing modules:
 Supported step types:
 
 - `comment`
+- `delay`
 - `set_temperature`
 - `wait_temperature`
 - `set_field`
@@ -771,6 +776,7 @@ Supported step types:
 - `set_chamber`
 - `set_position`
 - `measure`
+- `measure_until`
 - `loop` wrapper around nested steps
 
 Current execution model:
@@ -1301,7 +1307,7 @@ Tasks:
 - [ ] Add better error reporting for failed steps.
 - [ ] Add support for comments/markers written to data files, not just logs.
 - [ ] Add final abort and final complete marker rows.
-- [ ] Add optional `measure_until_stable` or `measure_while_sweeping` only if needed by lab workflows.
+- [x] Add target-terminated `measure_until` acquisition for continuous transport ramps.
 - [ ] Confirm pause/resume behavior in tests.
 - [ ] Add stable wait conditions for combined temperature+field waits if needed.
 - [ ] Decide whether loops should support nested loops; current expansion only handles one loop level at a time as written.
@@ -1683,3 +1689,120 @@ Recommended next development step: perform supervised, read-only mixed-mode chec
 the real LS372 and MultiPyVu scaffolding server, then validate a generated MultiPyVu `.dat`
 file in MultiVu. Do not enable real PPMS setpoints until the connection/enums, safety limits,
 and lab abort/safe-state policy have been explicitly reviewed.
+
+## Transport Sequence Builder Update (2026-08-27)
+
+The GUI now includes a lab-facing builder for four common workflows:
+
+- stepped resistivity vs temperature at one or more fixed fields;
+- continuous resistivity vs temperature at a fixed field;
+- stepped resistivity vs field at a fixed temperature;
+- continuous resistivity vs field at a fixed temperature.
+
+The pure-Python builders live in `app/sequence_builder.py`; the Qt form lives in
+`app/widgets/sequence_builder_panel.py`. Increasing and decreasing sweeps use the same
+positive step-size input. A stop value is included when it lies on the numerical grid.
+Generated sequences are fully expanded, validated against the active `SafetyLimits`, shown
+in the existing YAML editor, and saved through the existing file workflow. Hand-written
+version-1 YAML remains supported.
+
+Continuous templates use one reusable version-1 step:
+
+```yaml
+- name: Acquire during temperature ramp
+  measure_until:
+    channel: 1
+    interval_s: 1.0
+    quantity: temperature
+    target: 300.0
+    tolerance: 0.05
+    require_stable: true
+    settle_s: 0.0
+    timeout_s: 7200.0
+```
+
+`quantity` may be `temperature` or `field`. The engine reads and writes actual PPMS and
+LS372 values throughout the ramp, then stops after the measured target is within tolerance,
+the PPMS status reports a stable/holding condition when requested, and `settle_s` has
+elapsed. Timeout, pause/resume, and cooperative abort remain enforced. `MockPPMSController`
+can simulate deterministic ramps for tests while retaining its previous immediate-setpoint
+default.
+
+Verification after this update:
+
+```text
+pytest -q
+52 passed in 1.32s
+```
+
+The result covers increasing/decreasing stepped temperature and field grids, multiple fixed
+fields, continuous temperature and field ramps with measured intermediate values, YAML
+round-tripping, safety rejection, timeout, abort, and offscreen builder GUI generation.
+Real PPMS status strings/enums still require supervised hardware verification. Continuous
+runs depend on the driver exposing a recognizable stable/holding status; a blocking driver
+call still limits abort responsiveness. Dry-run PPMS controllers do not simulate physical
+ramp progress, so continuous templates should be exercised with the mock/simulation path or
+real hardware rather than dry-run mode.
+
+## Composable Sequence Builder Update (2026-08-27)
+
+This update supersedes the template-only GUI builder described immediately above. Work was
+performed on branch `feature/composable-sequence-builder`.
+
+The GUI builder now owns an ordered list of serializable `SequenceBlock` objects. Operators
+can add, select/edit, move up/down, duplicate, and delete blocks before expanding the whole
+experiment. List rows contain concise command parameters so the complete execution order is
+readable before YAML generation. The main model is in `app/sequence_blocks.py`; the list and
+parameter editor are in `app/widgets/sequence_builder_panel.py`.
+
+Available primitive blocks:
+
+- Set Temperature and Set Field (command only; no implicit wait);
+- Wait for Temperature Stable and Wait for Field Stable;
+- Equilibrate at Temperature and Equilibrate at Field;
+- Delay / Wait;
+- Comment / Marker;
+- Measure Resistance by points and/or duration.
+
+Available higher-level blocks:
+
+- stepped and continuous rho vs temperature;
+- stepped and continuous rho vs field.
+
+Higher-level blocks expand to the same version-1 operations used by manually authored YAML.
+They do not execute instruments from Qt. Continuous blocks reuse `measure_until`; stepped
+blocks expand to command, explicit stable wait, optional explicit delay, and measurement
+steps at each setpoint. Temperature and field stability are therefore no longer conflated
+with additional equilibration in builder-generated sequences.
+
+Version-1 now also recognizes:
+
+```yaml
+- name: Equilibrate after temperature stable for 300 s
+  delay:
+    duration_s: 300.0
+```
+
+`SequenceRunner` performs this delay cooperatively in its existing worker thread, pauses
+timeout accounting while paused, and exits promptly on abort. No new execution engine was
+introduced.
+
+Generated files contain both the expanded authoritative `steps` list and
+`metadata.composable_blocks`. The metadata restores high-level blocks for GUI editing after
+save/load; `SequenceRunner` ignores it. Existing YAML without this metadata remains valid.
+Recognized primitive steps are imported as blocks, while loops, chamber/position commands,
+`measure_until`, and other unsupported builder forms are preserved as read-only raw steps
+and can still be edited in the YAML tab.
+
+Verification after this update:
+
+```text
+pytest -q
+60 passed in 1.43s
+```
+
+Coverage includes block ordering and editing, model serialization, high-level expansion,
+multiple transport routines in one experiment, explicit stable/equilibration separation,
+GUI move/edit/generate behavior, actual SequenceEditor file round-trip, and cooperative
+abort of the new delay step. The prior continuous-ramp, safety, worker, simulation, and
+manual-YAML compatibility tests also remain green.

@@ -5,6 +5,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
+from resistivity372.core.exceptions import InstrumentTimeoutError
 from resistivity372.core.geometry import SampleGeometry
 from resistivity372.core.models import LakeShoreReading, MeasurementRecord, PPMSStatus
 from resistivity372.instruments.lakeshore372 import LakeShore372Interface
@@ -69,22 +70,80 @@ class ResistivityMeasurementEngine:
 
             loop_start = time.monotonic()
             record = self._read_one(channel, t0, step_index, step_name)
-            self.datafile.write_record(record)
-            self.on_record(record)
+            self._publish_record(record)
             count += 1
 
-            if record.error:
-                self._consecutive_read_errors += 1
-                self.on_log(record.error)
-            else:
-                self._consecutive_read_errors = 0
+            sleep_s = float(interval_s) - (time.monotonic() - loop_start)
+            if sleep_s > 0:
+                self._sleep_abortable(sleep_s)
 
-            if self._consecutive_read_errors >= self.max_consecutive_read_errors:
-                raise RuntimeError(
-                    f"Stopping after {self._consecutive_read_errors} consecutive read errors."
+        return count
+
+    def measure_until(
+        self,
+        channel: int | str,
+        interval_s: float,
+        quantity: str,
+        target: float,
+        tolerance: float,
+        timeout_s: float,
+        require_stable: bool = True,
+        settle_s: float = 0.0,
+        step_index: int | None = None,
+        step_name: str = "",
+        start_time: float | None = None,
+    ) -> int:
+        """Acquire until measured PPMS state reaches and remains at a target.
+
+        The record satisfying the stop condition is written before this method returns.
+        Timeout accounting pauses while the user-requested pause flag is active.
+        """
+        if quantity not in {"temperature", "field"}:
+            raise ValueError("measure_until quantity must be 'temperature' or 'field'.")
+        if interval_s <= 0:
+            raise ValueError("Measurement interval must be positive.")
+        if tolerance <= 0:
+            raise ValueError("Target tolerance must be positive.")
+        if timeout_s <= 0:
+            raise ValueError("Measurement timeout must be positive.")
+        if settle_s < 0:
+            raise ValueError("Target settle time cannot be negative.")
+
+        self.geometry.validate()
+        t0 = start_time if start_time is not None else time.monotonic()
+        deadline = time.monotonic() + float(timeout_s)
+        stable_since: float | None = None
+        count = 0
+
+        while not self.abort_flag.is_set():
+            deadline += self._pause_if_requested()
+            if self.abort_flag.is_set():
+                break
+            if time.monotonic() > deadline:
+                raise InstrumentTimeoutError(
+                    f"Continuous acquisition did not reach stable {quantity} target "
+                    f"{target:g} within {timeout_s:g} s."
                 )
 
-            sleep_s = float(interval_s) - (time.monotonic() - loop_start)
+            loop_start = time.monotonic()
+            record = self._read_one(channel, t0, step_index, step_name)
+            self._publish_record(record)
+            count += 1
+
+            value, status = _condition_value(record.ppms, quantity)
+            at_target = value is not None and abs(value - float(target)) <= float(tolerance)
+            stable = not require_stable or _status_is_stable(status)
+            now = time.monotonic()
+            if at_target and stable:
+                if stable_since is None:
+                    stable_since = now
+                if now - stable_since >= settle_s:
+                    return count
+            else:
+                stable_since = None
+
+            sleep_s = min(float(interval_s), max(0.0, deadline - time.monotonic()))
+            sleep_s -= time.monotonic() - loop_start
             if sleep_s > 0:
                 self._sleep_abortable(sleep_s)
 
@@ -136,11 +195,47 @@ class ResistivityMeasurementEngine:
             error="; ".join(error_parts),
         )
 
-    def _pause_if_requested(self) -> None:
+    def _publish_record(self, record: MeasurementRecord) -> None:
+        self.datafile.write_record(record)
+        self.on_record(record)
+        if record.error:
+            self._consecutive_read_errors += 1
+            self.on_log(record.error)
+        else:
+            self._consecutive_read_errors = 0
+        if self._consecutive_read_errors >= self.max_consecutive_read_errors:
+            raise RuntimeError(
+                f"Stopping after {self._consecutive_read_errors} consecutive read errors."
+            )
+
+    def _pause_if_requested(self) -> float:
+        if not self.pause_flag.is_set():
+            return 0.0
+        paused_at = time.monotonic()
         while self.pause_flag.is_set() and not self.abort_flag.is_set():
             time.sleep(0.05)
+        return time.monotonic() - paused_at
 
     def _sleep_abortable(self, seconds: float) -> None:
         deadline = time.monotonic() + seconds
         while not self.abort_flag.is_set() and time.monotonic() < deadline:
             time.sleep(min(0.05, deadline - time.monotonic()))
+
+
+def _condition_value(status: PPMSStatus, quantity: str) -> tuple[float | None, object]:
+    if quantity == "temperature":
+        return status.temperature_K, status.temperature_status
+    return status.field_T, status.field_status
+
+
+def _status_is_stable(status: object) -> bool:
+    if status is None:
+        return False
+    if isinstance(status, bool):
+        return status
+    name = getattr(status, "name", status)
+    normalized = str(name).strip().lower().replace("-", "_").replace(" ", "_")
+    if "unstable" in normalized or normalized.startswith("not_"):
+        return False
+    stable_tokens = {"stable", "holding", "at_target", "persistent"}
+    return normalized in stable_tokens or normalized.rsplit(".", 1)[-1] in stable_tokens

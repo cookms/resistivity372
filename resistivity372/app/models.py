@@ -77,6 +77,7 @@ class SequenceSummary:
     measurement_channels: tuple[str, ...] = ()
     acquisition_points: int = 0
     acquisition_duration_s: float = 0.0
+    continuous_acquisitions: int = 0
     has_chamber_commands: bool = False
     has_position_commands: bool = False
 
@@ -108,6 +109,8 @@ class SequenceSummary:
             parts.append(f"Acquisition points: {self.acquisition_points}")
         if self.acquisition_duration_s:
             parts.append(f"Duration-based acquisition: {self.acquisition_duration_s:g} s total")
+        if self.continuous_acquisitions:
+            parts.append(f"Target-terminated continuous acquisitions: {self.continuous_acquisitions}")
         parts.append(f"Chamber commands: {'yes' if self.has_chamber_commands else 'no'}")
         parts.append(f"Position commands: {'yes' if self.has_position_commands else 'no'}")
         return "\n".join(parts)
@@ -191,6 +194,7 @@ def summarize_sequence(sequence: dict[str, Any]) -> SequenceSummary:
     channels: set[str] = set()
     points = 0
     duration = 0.0
+    continuous = 0
     chamber = False
     position = False
 
@@ -210,6 +214,10 @@ def summarize_sequence(sequence: dict[str, Any]) -> SequenceSummary:
                 points += int(cfg["points"])
             if cfg.get("duration_s") is not None:
                 duration += float(cfg["duration_s"])
+        if "measure_until" in step:
+            cfg = step["measure_until"]
+            channels.add(str(cfg.get("channel", 1)))
+            continuous += 1
         chamber = chamber or "set_chamber" in step
         position = position or "set_position" in step
 
@@ -222,6 +230,7 @@ def summarize_sequence(sequence: dict[str, Any]) -> SequenceSummary:
         measurement_channels=tuple(sorted(channels)),
         acquisition_points=points,
         acquisition_duration_s=duration,
+        continuous_acquisitions=continuous,
         has_chamber_commands=chamber,
         has_position_commands=position,
     )

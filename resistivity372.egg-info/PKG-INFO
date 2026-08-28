@@ -1,3 +1,38 @@
+Metadata-Version: 2.4
+Name: resistivity372
+Version: 0.1.0
+Summary: Backbone for LS372 + PPMS/MultiPyVu resistivity measurements
+Author: Lab Instrumentation Team
+License: MIT
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: PyYAML>=6.0
+Requires-Dist: numpy>=1.23
+Provides-Extra: gui
+Requires-Dist: PySide6>=6.6; extra == "gui"
+Requires-Dist: pyqtgraph>=0.13; extra == "gui"
+Provides-Extra: hardware
+Requires-Dist: lakeshore>=1.10.0; extra == "hardware"
+Requires-Dist: pyvisa>=1.14; extra == "hardware"
+Requires-Dist: pandas>=1.5; extra == "hardware"
+Requires-Dist: pillow>=9.0; extra == "hardware"
+Requires-Dist: pywin32>=300; platform_system == "Windows" and extra == "hardware"
+Provides-Extra: multipyvu-pypi
+Requires-Dist: MultiPyVu==2.2.0; extra == "multipyvu-pypi"
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: ruff>=0.5; extra == "dev"
+Provides-Extra: all
+Requires-Dist: PySide6>=6.6; extra == "all"
+Requires-Dist: pyqtgraph>=0.13; extra == "all"
+Requires-Dist: lakeshore>=1.10.0; extra == "all"
+Requires-Dist: pyvisa>=1.14; extra == "all"
+Requires-Dist: pandas>=1.5; extra == "all"
+Requires-Dist: pillow>=9.0; extra == "all"
+Requires-Dist: pywin32>=300; platform_system == "Windows" and extra == "all"
+Requires-Dist: pytest>=7.0; extra == "all"
+Requires-Dist: ruff>=0.5; extra == "all"
+
 # resistivity372 backbone
 
 This is a basic, buildable Python backbone for GUI-driven resistivity measurements using:
@@ -50,34 +85,25 @@ status, plots, and logs return to the GUI through Qt signals. Pause/resume and a
 cooperative. Abort stops sequence/acquisition work but does not ramp field, change
 temperature, or change chamber state.
 
-### Composable Sequence Builder
+### Transport Sequence Builder
 
-The **Composable Sequence Builder** constructs an experiment as an ordered list of reusable
-blocks. Primitive blocks set temperature or field, wait for PPMS stability, add a separate
-post-stability equilibration delay, insert a general delay or marker, and acquire a chosen
-number of points and/or duration. Higher-level blocks provide stepped and continuous
-resistivity-versus-temperature or resistivity-versus-field routines.
+The **Transport Sequence Builder** tab provides four graphical templates:
 
-Blocks can be added, edited, moved, duplicated, and deleted. Each row describes the command
-an operator will see in execution order. The builder expands the list into ordinary
-version-1 YAML and validates the complete result with the configured `SafetyLimits`.
+- resistivity versus stepped temperature at one or more fixed fields;
+- resistivity during a continuous temperature ramp;
+- resistivity versus stepped field at fixed temperature;
+- resistivity during a continuous field ramp.
+
+The builder accepts increasing or decreasing ranges, previews the expanded experiment,
+generates ordinary version-1 YAML, and validates it with the configured `SafetyLimits`.
 Generated YAML must be saved and validated before run initialization, exactly like a
-manually authored sequence. Builder metadata stored in the YAML allows the high-level block
-list to be restored when the file is loaded again; the existing `steps` list remains the
-authoritative executable representation for `SequenceRunner`.
-
-The main window gives run setup/status, the sequence builder, the live graph, and the
-application log separate top-level tabs so each workspace can use the full window area.
+manually authored sequence.
 
 Continuous templates use the reusable `measure_until` sequence operation. It records the
 actual PPMS temperature and field with every LS372 reading and stops only after the
 measured target is within tolerance and the corresponding PPMS status is stable. The step
 supports cooperative pause/abort and a required timeout; it does not estimate completion
 from nominal ramp duration.
-
-An explicit `delay` sequence operation implements equilibration and general waits. It runs
-inside `SequenceRunner`, honors cooperative pause/abort, and is intentionally separate from
-the PPMS stable-wait operations.
 
 ## Lab/hardware install with bundled MultiPyVu wheel
 

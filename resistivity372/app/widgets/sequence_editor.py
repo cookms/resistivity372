@@ -13,11 +13,13 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from resistivity372.app.models import SequenceSummary, summarize_sequence
+from resistivity372.app.widgets.sequence_builder_panel import SequenceBuilderPanel
 from resistivity372.core.safety import SafetyLimits
 from resistivity372.measurement.sequence import parse_sequence
 from resistivity372.measurement.sequence_runner import validate_sequence_against_safety
@@ -31,6 +33,8 @@ class SequenceEditor(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.path_edit = QLineEdit()
+        self.safety = SafetyLimits()
+        self.builder = SequenceBuilderPanel()
         self.editor = QPlainTextEdit()
         self.editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.editor.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
@@ -68,13 +72,17 @@ class SequenceEditor(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addLayout(path_row)
-        layout.addWidget(self.editor, 1)
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self.builder, "Composable Sequence Builder")
+        self.tabs.addTab(self.editor, "YAML Preview / Editor")
+        layout.addWidget(self.tabs, 1)
         layout.addWidget(self.validation_label)
         layout.addWidget(QLabel("Expanded sequence summary"))
         layout.addWidget(self.summary_view)
 
         self.editor.textChanged.connect(self._on_changed)
         self.path_edit.textChanged.connect(self._on_path_changed)
+        self.builder.sequenceGenerated.connect(self._on_builder_sequence)
 
     @property
     def path(self) -> Path | None:
@@ -106,6 +114,10 @@ class SequenceEditor(QWidget):
         if load:
             self.load()
 
+    def set_safety_limits(self, safety: SafetyLimits) -> None:
+        self.safety = safety
+        self.builder.set_safety_limits(safety)
+
     def load(self) -> bool:
         path = self.path
         if path is None:
@@ -123,7 +135,15 @@ class SequenceEditor(QWidget):
         self._validated_hash = ""
         self._summary = None
         self.summary_view.clear()
+        try:
+            self.builder.load_sequence(parse_sequence(yaml.safe_load(text), source=str(path)))
+        except Exception as exc:
+            self.builder.clear()
+            self.builder.message.setText(
+                f"YAML loaded for manual editing, but blocks could not be imported: {exc}"
+            )
         self._set_validation(False, "Loaded; validation required.")
+        self.tabs.setCurrentWidget(self.editor)
         self.sequenceLoaded.emit(str(path))
         self.contentChanged.emit()
         return True
@@ -179,6 +199,15 @@ class SequenceEditor(QWidget):
         self.path_edit.setReadOnly(locked)
         for button in self._action_buttons:
             button.setEnabled(not locked)
+        self.builder.setEnabled(not locked)
+
+    def _on_builder_sequence(self, sequence: dict) -> None:
+        text = yaml.safe_dump(sequence, sort_keys=False, allow_unicode=True)
+        self.path_edit.clear()
+        self._loaded_text = ""
+        self.editor.setPlainText(text)
+        self.tabs.setCurrentWidget(self.editor)
+        self.validate_current(self.safety)
 
     def _browse(self) -> None:
         selected, _ = QFileDialog.getOpenFileName(

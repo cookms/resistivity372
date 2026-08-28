@@ -58,6 +58,12 @@ class SequenceRunner:
             self.on_log(str(step["comment"]))
             return
 
+        if "delay" in step:
+            duration_s = float(step["delay"]["duration_s"])
+            self.on_log(f"Delay: {duration_s:g} s")
+            self._delay(duration_s)
+            return
+
         if "set_temperature" in step:
             cfg = step["set_temperature"]
             self.on_log(
@@ -163,6 +169,27 @@ class SequenceRunner:
             )
             return
 
+        if "measure_until" in step:
+            cfg = step["measure_until"]
+            self.on_log(
+                f"Continuous acquisition: channel={cfg.get('channel', 1)} "
+                f"until {cfg['quantity']}={cfg['target']} +/- {cfg['tolerance']}"
+            )
+            self.engine.measure_until(
+                channel=cfg.get("channel", 1),
+                interval_s=float(cfg.get("interval_s", 1.0)),
+                quantity=str(cfg["quantity"]),
+                target=float(cfg["target"]),
+                tolerance=float(cfg["tolerance"]),
+                timeout_s=float(cfg["timeout_s"]),
+                require_stable=bool(cfg.get("require_stable", True)),
+                settle_s=float(cfg.get("settle_s", 0.0)),
+                step_index=index,
+                step_name=str(cfg.get("name", step_name)),
+                start_time=self._run_t0,
+            )
+            return
+
         raise SequenceValidationError(f"Unknown step: {step}")
 
     def _validate_step(self, step: dict[str, Any]) -> None:
@@ -171,6 +198,16 @@ class SequenceRunner:
     def _pause_if_requested(self) -> None:
         while self.pause_flag.is_set() and not self.abort_flag.is_set():
             time.sleep(0.05)
+
+    def _delay(self, duration_s: float) -> None:
+        deadline = time.monotonic() + duration_s
+        while not self.abort_flag.is_set() and time.monotonic() < deadline:
+            if self.pause_flag.is_set():
+                paused_at = time.monotonic()
+                self._pause_if_requested()
+                deadline += time.monotonic() - paused_at
+                continue
+            time.sleep(max(0.0, min(0.05, deadline - time.monotonic())))
 
 
 def validate_sequence_against_safety(sequence: dict[str, Any], safety: SafetyLimits) -> None:
@@ -183,6 +220,7 @@ def validate_sequence_against_safety(sequence: dict[str, Any], safety: SafetyLim
 
     recognized = {
         "comment",
+        "delay",
         "set_temperature",
         "wait_temperature",
         "set_field",
@@ -190,6 +228,7 @@ def validate_sequence_against_safety(sequence: dict[str, Any], safety: SafetyLim
         "set_chamber",
         "set_position",
         "measure",
+        "measure_until",
     }
 
     for index, step in enumerate(expanded_steps(steps)):
@@ -208,6 +247,7 @@ def _validate_expanded_step(
 ) -> None:
     recognized = recognized or {
         "comment",
+        "delay",
         "set_temperature",
         "wait_temperature",
         "set_field",
@@ -215,6 +255,7 @@ def _validate_expanded_step(
         "set_chamber",
         "set_position",
         "measure",
+        "measure_until",
     }
     operations = [key for key in recognized if key in step]
     if not operations:
@@ -224,19 +265,27 @@ def _validate_expanded_step(
             f"A step must contain one operation, found: {', '.join(sorted(operations))}."
         )
 
+    if "delay" in step:
+        cfg = _mapping_config(step, "delay")
+        if float(cfg["duration_s"]) <= 0:
+            raise SequenceValidationError("delay duration_s must be positive.")
+
     if "set_temperature" in step:
         cfg = _mapping_config(step, "set_temperature")
         safety.check_temperature(float(cfg["setpoint_K"]), float(cfg["rate_K_per_min"]))
+        _validate_wait_options(cfg, "set_temperature")
     if "wait_temperature" in step:
-        _mapping_config(step, "wait_temperature")
+        _validate_wait_options(_mapping_config(step, "wait_temperature"), "wait_temperature")
     if "set_field" in step:
         cfg = _mapping_config(step, "set_field")
         safety.check_field(float(cfg["setpoint_T"]), float(cfg["rate_T_per_min"]))
+        _validate_wait_options(cfg, "set_field")
     if "wait_field" in step:
-        _mapping_config(step, "wait_field")
+        _validate_wait_options(_mapping_config(step, "wait_field"), "wait_field")
     if "set_chamber" in step:
         cfg = _mapping_config(step, "set_chamber")
         safety.check_chamber(str(cfg["mode"]))
+        _validate_wait_options(cfg, "set_chamber")
     if "set_position" in step:
         cfg = _mapping_config(step, "set_position")
         safety.check_position(float(cfg["position_deg"]), float(cfg.get("rate_deg_per_s", 1.0)))
@@ -250,6 +299,26 @@ def _validate_expanded_step(
             raise SequenceValidationError("measure points must be positive.")
         if cfg.get("duration_s") is not None and float(cfg["duration_s"]) <= 0:
             raise SequenceValidationError("measure duration_s must be positive.")
+    if "measure_until" in step:
+        cfg = _mapping_config(step, "measure_until")
+        quantity = str(cfg["quantity"])
+        target = float(cfg["target"])
+        if quantity == "temperature":
+            safety.check_temperature(target, 0.0)
+        elif quantity == "field":
+            safety.check_field(target, 0.0)
+        else:
+            raise SequenceValidationError(
+                "measure_until quantity must be 'temperature' or 'field'."
+            )
+        if float(cfg.get("interval_s", 1.0)) <= 0:
+            raise SequenceValidationError("measure_until interval_s must be positive.")
+        if float(cfg["tolerance"]) <= 0:
+            raise SequenceValidationError("measure_until tolerance must be positive.")
+        if float(cfg["timeout_s"]) <= 0:
+            raise SequenceValidationError("measure_until timeout_s must be positive.")
+        if float(cfg.get("settle_s", 0.0)) < 0:
+            raise SequenceValidationError("measure_until settle_s cannot be negative.")
 
 
 def _mapping_config(step: dict[str, Any], operation: str) -> dict[str, Any]:
@@ -257,3 +326,10 @@ def _mapping_config(step: dict[str, Any], operation: str) -> dict[str, Any]:
     if not isinstance(config, dict):
         raise SequenceValidationError(f"{operation} must contain a mapping.")
     return config
+
+
+def _validate_wait_options(config: dict[str, Any], operation: str) -> None:
+    if "timeout_s" in config and float(config["timeout_s"]) <= 0:
+        raise SequenceValidationError(f"{operation} timeout_s must be positive.")
+    if "settle_s" in config and float(config["settle_s"]) < 0:
+        raise SequenceValidationError(f"{operation} settle_s cannot be negative.")

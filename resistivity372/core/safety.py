@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from .exceptions import SafetyLimitError
@@ -28,6 +29,8 @@ class SafetyLimits:
     position_rate_max_deg_per_s: float = 10.0
 
     def check_temperature(self, setpoint_K: float, rate_K_per_min: float) -> None:
+        if not math.isfinite(setpoint_K) or not math.isfinite(rate_K_per_min):
+            raise SafetyLimitError("Temperature setpoint and ramp rate must be finite.")
         if not self.temperature_min_K <= setpoint_K <= self.temperature_max_K:
             raise SafetyLimitError(
                 f"Temperature setpoint {setpoint_K:g} K is outside "
@@ -40,6 +43,8 @@ class SafetyLimits:
             )
 
     def check_field(self, setpoint_T: float, rate_T_per_min: float) -> None:
+        if not math.isfinite(setpoint_T) or not math.isfinite(rate_T_per_min):
+            raise SafetyLimitError("Field setpoint and ramp rate must be finite.")
         if abs(setpoint_T) > self.field_abs_max_T:
             raise SafetyLimitError(
                 f"Field setpoint {setpoint_T:g} T exceeds +/-{self.field_abs_max_T:g} T."
@@ -55,6 +60,8 @@ class SafetyLimits:
             raise SafetyLimitError(f"Chamber mode {mode!r} is not allowed by configuration.")
 
     def check_position(self, position_deg: float, rate_deg_per_s: float) -> None:
+        if not math.isfinite(position_deg) or not math.isfinite(rate_deg_per_s):
+            raise SafetyLimitError("Position and position rate must be finite.")
         if not self.position_min_deg <= position_deg <= self.position_max_deg:
             raise SafetyLimitError(
                 f"Position {position_deg:g} deg is outside "

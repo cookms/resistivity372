@@ -52,11 +52,18 @@ class MockLakeShore372Controller:
 
 
 class MockPPMSController:
-    def __init__(self, safety: SafetyLimits | None = None):
+    def __init__(self, safety: SafetyLimits | None = None, ramp_readings: int = 0):
         self.safety = safety or SafetyLimits()
+        self.ramp_readings = max(0, int(ramp_readings))
         self._connected = False
         self.temperature_K = 300.0
         self.field_T = 0.0
+        self._temperature_target_K = self.temperature_K
+        self._field_target_T = self.field_T
+        self._temperature_increment_K = 0.0
+        self._field_increment_T = 0.0
+        self._temperature_remaining = 0
+        self._field_remaining = 0
         self.chamber_status = "sealed"
         self.position_deg: float | None = None
 
@@ -72,11 +79,12 @@ class MockPPMSController:
 
     def read_status(self) -> PPMSStatus:
         self._require_connected()
+        self._advance_ramps()
         return PPMSStatus(
             temperature_K=self.temperature_K,
-            temperature_status="stable",
+            temperature_status="ramping" if self._temperature_remaining else "stable",
             field_T=self.field_T,
-            field_status="stable",
+            field_status="ramping" if self._field_remaining else "stable",
             chamber_status=self.chamber_status,
             position_deg=self.position_deg,
             position_status="stable" if self.position_deg is not None else None,
@@ -86,7 +94,15 @@ class MockPPMSController:
     def set_temperature(self, setpoint_K: float, rate_K_per_min: float, approach: str = "fast_settle") -> None:
         self._require_connected()
         self.safety.check_temperature(setpoint_K, rate_K_per_min)
-        self.temperature_K = float(setpoint_K)
+        self._temperature_target_K = float(setpoint_K)
+        if self.ramp_readings:
+            self._temperature_remaining = self.ramp_readings
+            self._temperature_increment_K = (
+                self._temperature_target_K - self.temperature_K
+            ) / self.ramp_readings
+        else:
+            self.temperature_K = self._temperature_target_K
+            self._temperature_remaining = 0
 
     def set_field(
         self,
@@ -97,7 +113,15 @@ class MockPPMSController:
     ) -> None:
         self._require_connected()
         self.safety.check_field(setpoint_T, rate_T_per_min)
-        self.field_T = float(setpoint_T)
+        self._field_target_T = float(setpoint_T)
+        if self.ramp_readings:
+            self._field_remaining = self.ramp_readings
+            self._field_increment_T = (
+                self._field_target_T - self.field_T
+            ) / self.ramp_readings
+        else:
+            self.field_T = self._field_target_T
+            self._field_remaining = 0
 
     def set_chamber(self, mode_name: str) -> None:
         self._require_connected()
@@ -118,11 +142,37 @@ class MockPPMSController:
         poll_s: float = 2.0,
     ) -> None:
         self._require_connected()
-        deadline = time.monotonic() + min(settle_s, timeout_s)
+        deadline = time.monotonic() + timeout_s
+        while self._targets_are_ramping(targets):
+            if abort_flag.is_set():
+                return
+            if time.monotonic() > deadline:
+                raise TimeoutError(f"Mock PPMS did not become steady within {timeout_s:g} s.")
+            self._advance_ramps()
+            time.sleep(0.001)
+        deadline = min(deadline, time.monotonic() + settle_s)
         while time.monotonic() < deadline:
             if abort_flag.is_set():
                 return
             time.sleep(min(0.02, deadline - time.monotonic()))
+
+    def _advance_ramps(self) -> None:
+        if self._temperature_remaining:
+            self._temperature_remaining -= 1
+            self.temperature_K += self._temperature_increment_K
+            if not self._temperature_remaining:
+                self.temperature_K = self._temperature_target_K
+        if self._field_remaining:
+            self._field_remaining -= 1
+            self.field_T += self._field_increment_T
+            if not self._field_remaining:
+                self.field_T = self._field_target_T
+
+    def _targets_are_ramping(self, targets: tuple[str, ...]) -> bool:
+        return (
+            ("temperature" in targets and self._temperature_remaining > 0)
+            or ("field" in targets and self._field_remaining > 0)
+        )
 
     def _require_connected(self) -> None:
         if not self._connected:

@@ -8,7 +8,6 @@ from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -43,7 +42,6 @@ from resistivity372.core.config import deep_update, dotted_set, load_yaml_file
 from resistivity372.core.logging_setup import setup_logging
 from resistivity372.core.safety import safety_from_config
 from resistivity372.runtime import resolve_instrument_simulation_mode
-
 
 ACTIVE_STATES = {
     ApplicationState.STARTING,
@@ -111,10 +109,6 @@ class MainWindow(QMainWindow):
         top_splitter.addWidget(right_content)
         top_splitter.setSizes([720, 560])
 
-        sequence_group = QGroupBox("Sequence Configuration / YAML Editor")
-        sequence_layout = QVBoxLayout(sequence_group)
-        sequence_layout.addWidget(self.sequence_editor)
-
         self.start_button = QPushButton("Start Measurement")
         self.pause_button = QPushButton("Pause")
         self.resume_button = QPushButton("Resume")
@@ -153,19 +147,16 @@ class MainWindow(QMainWindow):
             latest.addSpacing(12)
         latest.addStretch(1)
 
-        lower_tabs = QTabWidget()
-        lower_tabs.addTab(self.plot_panel, "Live Plot")
-        lower_tabs.addTab(self.log_panel, "Application Log")
-        main_splitter = QSplitter(Qt.Orientation.Vertical)
-        main_splitter.addWidget(top_splitter)
-        main_splitter.addWidget(sequence_group)
-        main_splitter.addWidget(lower_tabs)
-        main_splitter.setSizes([430, 330, 300])
+        self.workspace_tabs = QTabWidget()
+        self.workspace_tabs.addTab(top_splitter, "Run Setup & Status")
+        self.workspace_tabs.addTab(self.sequence_editor, "Sequence Builder")
+        self.workspace_tabs.addTab(self.plot_panel, "Live Plot")
+        self.workspace_tabs.addTab(self.log_panel, "Application Log")
 
         central = QWidget()
         layout = QVBoxLayout(central)
         layout.addLayout(config_row)
-        layout.addWidget(main_splitter, 1)
+        layout.addWidget(self.workspace_tabs, 1)
         layout.addLayout(controls)
         layout.addLayout(latest)
         self.setCentralWidget(central)
@@ -232,6 +223,7 @@ class MainWindow(QMainWindow):
             self.run_setup.set_config(config)
             self.geometry_panel.set_config(config)
             self.connection_panel.set_config(config)
+            self.sequence_editor.set_safety_limits(safety_from_config(config))
             self._configure_logging(config)
             refresh = int(config.get("gui", {}).get("refresh_interval_ms", 1000))
             self.poll_timer.start(max(500, refresh))
@@ -407,6 +399,7 @@ class MainWindow(QMainWindow):
 
     def _on_run_started(self) -> None:
         self._set_state(ApplicationState.RUNNING)
+        self.workspace_tabs.setCurrentWidget(self.plot_panel)
         if self._closing_pending:
             self._abort()
 

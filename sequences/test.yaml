@@ -1,0 +1,589 @@
+metadata:
+  experiment_type: rho_vs_h_stepped
+  generated_by: resistivity372 transport sequence builder
+steps:
+- comment: rho vs H - stepped field
+  name: Generated transport sequence
+- name: Stabilize at 10 K
+  set_temperature:
+    approach: fast_settle
+    rate_K_per_min: 2.0
+    setpoint_K: 10.0
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- name: Set field -1 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: -1.0
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=-1 T
+    points: 3
+  name: rho(H) T=10 K, B=-1 T
+- name: Set field -0.95 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: -0.95
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=-0.95 T
+    points: 3
+  name: rho(H) T=10 K, B=-0.95 T
+- name: Set field -0.9 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: -0.9
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=-0.9 T
+    points: 3
+  name: rho(H) T=10 K, B=-0.9 T
+- name: Set field -0.85 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: -0.85
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=-0.85 T
+    points: 3
+  name: rho(H) T=10 K, B=-0.85 T
+- name: Set field -0.8 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: -0.8
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=-0.8 T
+    points: 3
+  name: rho(H) T=10 K, B=-0.8 T
+- name: Set field -0.75 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: -0.75
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=-0.75 T
+    points: 3
+  name: rho(H) T=10 K, B=-0.75 T
+- name: Set field -0.7 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: -0.7
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=-0.7 T
+    points: 3
+  name: rho(H) T=10 K, B=-0.7 T
+- name: Set field -0.65 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: -0.65
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=-0.65 T
+    points: 3
+  name: rho(H) T=10 K, B=-0.65 T
+- name: Set field -0.6 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: -0.6
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=-0.6 T
+    points: 3
+  name: rho(H) T=10 K, B=-0.6 T
+- name: Set field -0.55 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: -0.55
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=-0.55 T
+    points: 3
+  name: rho(H) T=10 K, B=-0.55 T
+- name: Set field -0.5 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: -0.5
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=-0.5 T
+    points: 3
+  name: rho(H) T=10 K, B=-0.5 T
+- name: Set field -0.45 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: -0.45
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=-0.45 T
+    points: 3
+  name: rho(H) T=10 K, B=-0.45 T
+- name: Set field -0.4 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: -0.4
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=-0.4 T
+    points: 3
+  name: rho(H) T=10 K, B=-0.4 T
+- name: Set field -0.35 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: -0.35
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=-0.35 T
+    points: 3
+  name: rho(H) T=10 K, B=-0.35 T
+- name: Set field -0.3 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: -0.3
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=-0.3 T
+    points: 3
+  name: rho(H) T=10 K, B=-0.3 T
+- name: Set field -0.25 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: -0.25
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=-0.25 T
+    points: 3
+  name: rho(H) T=10 K, B=-0.25 T
+- name: Set field -0.2 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: -0.2
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=-0.2 T
+    points: 3
+  name: rho(H) T=10 K, B=-0.2 T
+- name: Set field -0.15 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: -0.15
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=-0.15 T
+    points: 3
+  name: rho(H) T=10 K, B=-0.15 T
+- name: Set field -0.1 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: -0.1
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=-0.1 T
+    points: 3
+  name: rho(H) T=10 K, B=-0.1 T
+- name: Set field -0.05 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: -0.05
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=-0.05 T
+    points: 3
+  name: rho(H) T=10 K, B=-0.05 T
+- name: Set field 0 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: 0.0
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=0 T
+    points: 3
+  name: rho(H) T=10 K, B=0 T
+- name: Set field 0.05 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: 0.05
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=0.05 T
+    points: 3
+  name: rho(H) T=10 K, B=0.05 T
+- name: Set field 0.1 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: 0.1
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=0.1 T
+    points: 3
+  name: rho(H) T=10 K, B=0.1 T
+- name: Set field 0.15 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: 0.15
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=0.15 T
+    points: 3
+  name: rho(H) T=10 K, B=0.15 T
+- name: Set field 0.2 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: 0.2
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=0.2 T
+    points: 3
+  name: rho(H) T=10 K, B=0.2 T
+- name: Set field 0.25 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: 0.25
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=0.25 T
+    points: 3
+  name: rho(H) T=10 K, B=0.25 T
+- name: Set field 0.3 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: 0.3
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=0.3 T
+    points: 3
+  name: rho(H) T=10 K, B=0.3 T
+- name: Set field 0.35 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: 0.35
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=0.35 T
+    points: 3
+  name: rho(H) T=10 K, B=0.35 T
+- name: Set field 0.4 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: 0.4
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=0.4 T
+    points: 3
+  name: rho(H) T=10 K, B=0.4 T
+- name: Set field 0.45 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: 0.45
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=0.45 T
+    points: 3
+  name: rho(H) T=10 K, B=0.45 T
+- name: Set field 0.5 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: 0.5
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=0.5 T
+    points: 3
+  name: rho(H) T=10 K, B=0.5 T
+- name: Set field 0.55 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: 0.55
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=0.55 T
+    points: 3
+  name: rho(H) T=10 K, B=0.55 T
+- name: Set field 0.6 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: 0.6
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=0.6 T
+    points: 3
+  name: rho(H) T=10 K, B=0.6 T
+- name: Set field 0.65 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: 0.65
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=0.65 T
+    points: 3
+  name: rho(H) T=10 K, B=0.65 T
+- name: Set field 0.7 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: 0.7
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=0.7 T
+    points: 3
+  name: rho(H) T=10 K, B=0.7 T
+- name: Set field 0.75 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: 0.75
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=0.75 T
+    points: 3
+  name: rho(H) T=10 K, B=0.75 T
+- name: Set field 0.8 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: 0.8
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=0.8 T
+    points: 3
+  name: rho(H) T=10 K, B=0.8 T
+- name: Set field 0.85 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: 0.85
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=0.85 T
+    points: 3
+  name: rho(H) T=10 K, B=0.85 T
+- name: Set field 0.9 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: 0.9
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=0.9 T
+    points: 3
+  name: rho(H) T=10 K, B=0.9 T
+- name: Set field 0.95 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: 0.95
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=0.95 T
+    points: 3
+  name: rho(H) T=10 K, B=0.95 T
+- name: Set field 1 T
+  set_field:
+    approach: linear
+    rate_T_per_min: 0.05
+    setpoint_T: 1.0
+    settle_s: 0.0
+    timeout_s: 7200.0
+    wait: true
+- measure:
+    channel: 1
+    interval_s: 1.0
+    name: rho(H) T=10 K, B=1 T
+    points: 3
+  name: rho(H) T=10 K, B=1 T
+version: 1
