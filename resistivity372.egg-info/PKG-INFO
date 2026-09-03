@@ -85,25 +85,34 @@ status, plots, and logs return to the GUI through Qt signals. Pause/resume and a
 cooperative. Abort stops sequence/acquisition work but does not ramp field, change
 temperature, or change chamber state.
 
-### Transport Sequence Builder
+### Composable Sequence Builder
 
-The **Transport Sequence Builder** tab provides four graphical templates:
+The **Composable Sequence Builder** constructs an experiment as an ordered list of reusable
+blocks. Primitive blocks set temperature or field, wait for PPMS stability, add a separate
+post-stability equilibration delay, insert a general delay or marker, and acquire a chosen
+number of points and/or duration. Higher-level blocks provide stepped and continuous
+resistivity-versus-temperature or resistivity-versus-field routines.
 
-- resistivity versus stepped temperature at one or more fixed fields;
-- resistivity during a continuous temperature ramp;
-- resistivity versus stepped field at fixed temperature;
-- resistivity during a continuous field ramp.
-
-The builder accepts increasing or decreasing ranges, previews the expanded experiment,
-generates ordinary version-1 YAML, and validates it with the configured `SafetyLimits`.
+Blocks can be added, edited, moved, duplicated, and deleted. Each row describes the command
+an operator will see in execution order. The builder expands the list into ordinary
+version-1 YAML and validates the complete result with the configured `SafetyLimits`.
 Generated YAML must be saved and validated before run initialization, exactly like a
-manually authored sequence.
+manually authored sequence. Builder metadata stored in the YAML allows the high-level block
+list to be restored when the file is loaded again; the existing `steps` list remains the
+authoritative executable representation for `SequenceRunner`.
+
+The main window gives run setup/status, the sequence builder, the live graph, and the
+application log separate top-level tabs so each workspace can use the full window area.
 
 Continuous templates use the reusable `measure_until` sequence operation. It records the
 actual PPMS temperature and field with every LS372 reading and stops only after the
 measured target is within tolerance and the corresponding PPMS status is stable. The step
 supports cooperative pause/abort and a required timeout; it does not estimate completion
 from nominal ramp duration.
+
+An explicit `delay` sequence operation implements equilibration and general waits. It runs
+inside `SequenceRunner`, honors cooperative pause/abort, and is intentionally separate from
+the PPMS stable-wait operations.
 
 ## Lab/hardware install with bundled MultiPyVu wheel
 

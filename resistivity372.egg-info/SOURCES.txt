@@ -20,6 +20,7 @@ resistivity372/app/__init__.py
 resistivity372/app/gui_main.py
 resistivity372/app/models.py
 resistivity372/app/qt_worker.py
+resistivity372/app/sequence_blocks.py
 resistivity372/app/sequence_builder.py
 resistivity372/app/widgets/__init__.py
 resistivity372/app/widgets/connection_panel.py
@@ -53,9 +54,11 @@ scripts/run_desktop_gpib_multipyvu_sim_test.py
 scripts/smoke_multipyvu_datafile.py
 scripts/verify_lakeshore_gpib.py
 scripts/verify_multipyvu_install.py
+sequences/cont_test.yaml
 sequences/desktop_readonly_smoke.yaml
 sequences/field_sweep_10K.yaml
 sequences/smoke_simulation.yaml
+sequences/test.yaml
 tests/test_app_models.py
 tests/test_backend_selection.py
 tests/test_datafile_manager.py
@@ -66,6 +69,7 @@ tests/test_lakeshore372_connection_config.py
 tests/test_qt_worker.py
 tests/test_safety.py
 tests/test_sequence.py
+tests/test_sequence_blocks.py
 tests/test_sequence_builder.py
 vendor/wheels/MultiPyVu-2.2.0-py3-none-any.whl
 vendor/wheels/README.md
