@@ -70,9 +70,7 @@ class MainWindow(QMainWindow):
         self._qt_log_handler = None
 
         self.setWindowTitle("LS372 + PPMS Resistivity Measurement")
-        self.config_edit = QLineEdit(
-            str(getattr(args, "config", "configs/example_config.yaml"))
-        )
+        self.config_edit = QLineEdit(str(getattr(args, "config", "configs/example_config.yaml")))
         browse_config = QPushButton("Choose Config")
         self.load_config_button = QPushButton("Load Config")
         browse_config.clicked.connect(self._browse_config)
@@ -186,6 +184,7 @@ class MainWindow(QMainWindow):
 
         self.connection_panel.connectRequested.connect(self._connect_instruments)
         self.connection_panel.disconnectRequested.connect(self.disconnectRequested)
+        self.status_panel.channelChanged.connect(self._status_channel_changed)
         self.run_setup.initializeRequested.connect(self._initialize_run)
         self.run_setup.changed.connect(self._invalidate_run)
         self.geometry_panel.geometryChanged.connect(self._invalidate_run)
@@ -223,6 +222,9 @@ class MainWindow(QMainWindow):
             self.run_setup.set_config(config)
             self.geometry_panel.set_config(config)
             self.connection_panel.set_config(config)
+            self.status_panel.set_default_channel(
+                config.get("lakeshore372", {}).get("default_channel", 1)
+            )
             self.sequence_editor.set_safety_limits(safety_from_config(config))
             self._configure_logging(config)
             refresh = int(config.get("gui", {}).get("refresh_interval_ms", 1000))
@@ -290,7 +292,9 @@ class MainWindow(QMainWindow):
                 QMessageBox.StandardButton.No,
             )
             if answer != QMessageBox.StandardButton.Yes:
-                self.run_setup.set_initialized(False, "Run not initialized - existing file retained")
+                self.run_setup.set_initialized(
+                    False, "Run not initialized - existing file retained"
+                )
                 return
             allow_overwrite = True
         self.preparation.output_path = path
@@ -299,9 +303,7 @@ class MainWindow(QMainWindow):
         self.preparation.allow_overwrite = allow_overwrite
         self.preparation.run_initialized = True
         self.preparation.errors.clear()
-        geometry_note = (
-            "resistivity enabled" if geometry_state == "valid" else "resistance only"
-        )
+        geometry_note = "resistivity enabled" if geometry_state == "valid" else "resistance only"
         self.run_setup.set_initialized(
             True,
             f"Run ready: {path} ({self.run_setup.backend.currentText()}, {geometry_note})",
@@ -323,7 +325,9 @@ class MainWindow(QMainWindow):
         if output is None:
             return
         if output.exists() and not self.preparation.allow_overwrite:
-            self._on_error("The output file now exists; initialize the run again to confirm overwrite.")
+            self._on_error(
+                "The output file now exists; initialize the run again to confirm overwrite."
+            )
             self._invalidate_run()
             return
         try:
@@ -379,15 +383,16 @@ class MainWindow(QMainWindow):
             return
         try:
             config = self.effective_config()
-            channel = config.get("lakeshore372", {}).get("default_channel", 1)
-            self.connectRequested.emit(config, channel)
+            self.connectRequested.emit(config, self.status_panel.selected_channel)
         except Exception as exc:
             self._on_error(f"Cannot connect: {exc}")
 
     def _poll_idle_status(self) -> None:
         if self.state not in ACTIVE_STATES and self.base_config:
-            channel = self.base_config.get("lakeshore372", {}).get("default_channel", 1)
-            self.pollRequested.emit(channel)
+            self.pollRequested.emit(self.status_panel.selected_channel)
+
+    def _status_channel_changed(self, _channel: int) -> None:
+        self._poll_idle_status()
 
     def _on_record(self, record) -> None:
         self.plot_panel.add_record(record)
@@ -422,7 +427,9 @@ class MainWindow(QMainWindow):
     def _on_finished(self) -> None:
         self._set_run_fields_locked(False)
         self.preparation.invalidate_run()
-        self.run_setup.set_initialized(False, "Run ended; initialize a new destination before starting again")
+        self.run_setup.set_initialized(
+            False, "Run ended; initialize a new destination before starting again"
+        )
         self._update_controls()
         if self._closing_pending:
             self.shutdownRequested.emit()
@@ -464,6 +471,7 @@ class MainWindow(QMainWindow):
         self.run_setup.set_locked(locked)
         self.geometry_panel.set_locked(locked)
         self.sequence_editor.set_locked(locked)
+        self.status_panel.set_channel_enabled(not locked)
         self.config_edit.setReadOnly(locked)
         self.load_config_button.setEnabled(not locked)
 

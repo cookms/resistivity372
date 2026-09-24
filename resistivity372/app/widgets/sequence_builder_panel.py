@@ -32,10 +32,12 @@ from resistivity372.app.sequence_blocks import (
     RhoVsTemperatureContinuousBlock,
     RhoVsTemperatureSteppedBlock,
     SequenceBlock,
+    SetChamberBlock,
     SetFieldBlock,
     SetTemperatureBlock,
     TemperatureEquilibrationBlock,
     WaitFieldBlock,
+    WaitChamberBlock,
     WaitTemperatureBlock,
     blocks_from_sequence,
     blocks_to_sequence,
@@ -49,6 +51,8 @@ ADDABLE_BLOCKS = (
     SetFieldBlock,
     WaitFieldBlock,
     FieldEquilibrationBlock,
+    SetChamberBlock,
+    WaitChamberBlock,
     DelayBlock,
     CommentBlock,
     MeasureBlock,
@@ -75,7 +79,12 @@ FIELD_LABELS = {
     "equilibration_s": "Equilibration after stable (s)",
     "initial_equilibration_s": "Initial equilibration after stable (s)",
     "tolerance_K": "Target tolerance (K)",
+    "stable_s": "Must remain within tolerance (s)",
+    "poll_s": "Status polling interval (s)",
+    "read_delay_s": "No field reads after command (s)",
+    "field_read_delay_s": "No field reads after command (s)",
     "stable_at_target_s": "Stable at target for (s)",
+    "endpoint_equilibration_s": "Endpoint equilibration after stable (s)",
     "start_T": "Field start (T)",
     "stop_T": "Field stop (T)",
     "step_T": "Field step (T)",
@@ -298,9 +307,7 @@ class SequenceBuilderPanel(QWidget):
     def _block_from_form(self) -> SequenceBlock:
         kind = str(self.block_type.currentData())
         cls = BLOCK_TYPES[kind]
-        values = {
-            name: _editor_value(name, editor) for name, editor in self._editors[kind].items()
-        }
+        values = {name: _editor_value(name, editor) for name, editor in self._editors[kind].items()}
         return cls(**values)
 
     def _load_selected(self, row: int) -> None:
@@ -348,7 +355,12 @@ def _field_editor(name: str, value, optional: bool = False) -> QWidget:
     editor.setKeyboardTracking(False)
     if name in {"start_T", "stop_T", "setpoint_T"}:
         editor.setRange(-100.0, 100.0)
-    elif optional or "equilibration" in name or "stable_at" in name:
+    elif (
+        optional
+        or "equilibration" in name
+        or "stable_at" in name
+        or name in {"stable_s", "read_delay_s", "field_read_delay_s"}
+    ):
         editor.setRange(0.0, 1_000_000.0)
         editor.setSpecialValueText("Not set" if optional else "0")
     else:

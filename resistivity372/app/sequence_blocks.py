@@ -44,17 +44,30 @@ class WaitTemperatureBlock(SequenceBlock):
     KIND: ClassVar[str] = "wait_temperature"
     LABEL: ClassVar[str] = "Wait for Temperature Stable"
     timeout_s: float = 3600.0
+    tolerance_K: float = 0.05
+    stable_s: float = 10.0
+    equilibration_s: float = 0.0
+    poll_s: float = 2.0
 
     def expand(self) -> list[dict[str, Any]]:
         return [
             {
                 "name": "Wait for temperature stable",
-                "wait_temperature": {"timeout_s": float(self.timeout_s), "settle_s": 0.0},
+                "wait_temperature": {
+                    "timeout_s": float(self.timeout_s),
+                    "tolerance_K": float(self.tolerance_K),
+                    "stable_s": float(self.stable_s),
+                    "equilibration_s": float(self.equilibration_s),
+                    "poll_s": float(self.poll_s),
+                },
             }
         ]
 
     def summary(self) -> str:
-        return f"{self.LABEL} — timeout {self.timeout_s:g} s"
+        return (
+            f"{self.LABEL} — +/- {self.tolerance_K:g} K for {self.stable_s:g} s, "
+            f"equilibrate {self.equilibration_s:g} s"
+        )
 
 
 @dataclass
@@ -89,17 +102,71 @@ class WaitFieldBlock(SequenceBlock):
     KIND: ClassVar[str] = "wait_field"
     LABEL: ClassVar[str] = "Wait for Field Stable"
     timeout_s: float = 3600.0
+    tolerance_T: float = 0.001
+    stable_s: float = 10.0
+    equilibration_s: float = 0.0
+    poll_s: float = 2.0
+    read_delay_s: float = 10.0
 
     def expand(self) -> list[dict[str, Any]]:
         return [
             {
                 "name": "Wait for field stable",
-                "wait_field": {"timeout_s": float(self.timeout_s), "settle_s": 0.0},
+                "wait_field": {
+                    "timeout_s": float(self.timeout_s),
+                    "tolerance_T": float(self.tolerance_T),
+                    "stable_s": float(self.stable_s),
+                    "equilibration_s": float(self.equilibration_s),
+                    "poll_s": float(self.poll_s),
+                    "read_delay_s": float(self.read_delay_s),
+                },
             }
         ]
 
     def summary(self) -> str:
-        return f"{self.LABEL} — timeout {self.timeout_s:g} s"
+        return (
+            f"{self.LABEL} — +/- {self.tolerance_T:g} T for {self.stable_s:g} s, "
+            f"equilibrate {self.equilibration_s:g} s"
+        )
+
+
+@dataclass
+class SetChamberBlock(SequenceBlock):
+    KIND: ClassVar[str] = "set_chamber"
+    LABEL: ClassVar[str] = "Set Chamber"
+    mode: str = "seal"
+
+    def expand(self) -> list[dict[str, Any]]:
+        return [{"name": f"Set chamber {self.mode}", "set_chamber": {"mode": self.mode}}]
+
+    def summary(self) -> str:
+        return f"{self.LABEL} — {self.mode}"
+
+
+@dataclass
+class WaitChamberBlock(SequenceBlock):
+    KIND: ClassVar[str] = "wait_chamber"
+    LABEL: ClassVar[str] = "Wait for Chamber State"
+    timeout_s: float = 1800.0
+    stable_s: float = 10.0
+    equilibration_s: float = 0.0
+    poll_s: float = 2.0
+
+    def expand(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "name": "Wait for chamber state",
+                "wait_chamber": {
+                    "timeout_s": float(self.timeout_s),
+                    "stable_s": float(self.stable_s),
+                    "equilibration_s": float(self.equilibration_s),
+                    "poll_s": float(self.poll_s),
+                },
+            }
+        ]
+
+    def summary(self) -> str:
+        return f"{self.LABEL} — stable {self.stable_s:g} s, equilibrate {self.equilibration_s:g} s"
 
 
 @dataclass
@@ -174,6 +241,8 @@ class RhoVsTemperatureSteppedBlock(SequenceBlock):
     rate_K_per_min: float = 2.0
     equilibration_s: float = 0.0
     timeout_s: float = 7200.0
+    tolerance_K: float = 0.05
+    stable_s: float = 10.0
     channel: int = 1
     interval_s: float = 1.0
     points: int | None = 5
@@ -183,9 +252,14 @@ class RhoVsTemperatureSteppedBlock(SequenceBlock):
         steps: list[dict[str, Any]] = []
         for target in inclusive_setpoints(self.start_K, self.stop_K, self.step_K):
             steps.append(_set_temperature(target, self.rate_K_per_min))
-            steps.extend(WaitTemperatureBlock(self.timeout_s).expand())
-            if self.equilibration_s > 0:
-                steps.extend(TemperatureEquilibrationBlock(self.equilibration_s).expand())
+            steps.extend(
+                WaitTemperatureBlock(
+                    timeout_s=self.timeout_s,
+                    tolerance_K=self.tolerance_K,
+                    stable_s=self.stable_s,
+                    equilibration_s=self.equilibration_s,
+                ).expand()
+            )
             steps.append(
                 _measure(
                     self.channel,
@@ -217,14 +291,20 @@ class RhoVsTemperatureContinuousBlock(SequenceBlock):
     tolerance_K: float = 0.05
     stable_at_target_s: float = 0.0
     timeout_s: float = 20_000.0
+    endpoint_equilibration_s: float = 0.0
 
     def expand(self) -> list[dict[str, Any]]:
         if self.start_K == self.stop_K:
             raise SequenceValidationError("Continuous temperature start and stop must differ.")
         steps = [_set_temperature(self.start_K, self.rate_K_per_min)]
-        steps.extend(WaitTemperatureBlock(self.timeout_s).expand())
-        if self.initial_equilibration_s > 0:
-            steps.extend(TemperatureEquilibrationBlock(self.initial_equilibration_s).expand())
+        steps.extend(
+            WaitTemperatureBlock(
+                timeout_s=self.timeout_s,
+                tolerance_K=self.tolerance_K,
+                stable_s=self.stable_at_target_s,
+                equilibration_s=self.initial_equilibration_s,
+            ).expand()
+        )
         steps.append(_set_temperature(self.stop_K, self.rate_K_per_min))
         steps.append(
             _measure_until(
@@ -233,17 +313,24 @@ class RhoVsTemperatureContinuousBlock(SequenceBlock):
                 "temperature",
                 self.stop_K,
                 self.tolerance_K,
-                self.stable_at_target_s,
+                0.0,
                 self.timeout_s,
                 f"rho(T) {self.start_K:g} to {self.stop_K:g} K",
             )
+        )
+        steps.extend(
+            WaitTemperatureBlock(
+                timeout_s=self.timeout_s,
+                tolerance_K=self.tolerance_K,
+                stable_s=self.stable_at_target_s,
+                equilibration_s=self.endpoint_equilibration_s,
+            ).expand()
         )
         return steps
 
     def summary(self) -> str:
         return (
-            f"{self.LABEL} — {self.start_K:g} → {self.stop_K:g} K "
-            f"@ {self.rate_K_per_min:g} K/min"
+            f"{self.LABEL} — {self.start_K:g} → {self.stop_K:g} K @ {self.rate_K_per_min:g} K/min"
         )
 
 
@@ -257,6 +344,9 @@ class RhoVsFieldSteppedBlock(SequenceBlock):
     rate_T_per_min: float = 0.1
     equilibration_s: float = 0.0
     timeout_s: float = 7200.0
+    tolerance_T: float = 0.001
+    stable_s: float = 10.0
+    field_read_delay_s: float = 10.0
     channel: int = 1
     interval_s: float = 1.0
     points: int | None = 5
@@ -266,9 +356,15 @@ class RhoVsFieldSteppedBlock(SequenceBlock):
         steps: list[dict[str, Any]] = []
         for target in inclusive_setpoints(self.start_T, self.stop_T, self.step_T):
             steps.append(_set_field(target, self.rate_T_per_min))
-            steps.extend(WaitFieldBlock(self.timeout_s).expand())
-            if self.equilibration_s > 0:
-                steps.extend(FieldEquilibrationBlock(self.equilibration_s).expand())
+            steps.extend(
+                WaitFieldBlock(
+                    timeout_s=self.timeout_s,
+                    tolerance_T=self.tolerance_T,
+                    stable_s=self.stable_s,
+                    equilibration_s=self.equilibration_s,
+                    read_delay_s=self.field_read_delay_s,
+                ).expand()
+            )
             steps.append(
                 _measure(
                     self.channel,
@@ -300,14 +396,22 @@ class RhoVsFieldContinuousBlock(SequenceBlock):
     tolerance_T: float = 0.001
     stable_at_target_s: float = 0.0
     timeout_s: float = 20_000.0
+    endpoint_equilibration_s: float = 0.0
+    field_read_delay_s: float = 10.0
 
     def expand(self) -> list[dict[str, Any]]:
         if self.start_T == self.stop_T:
             raise SequenceValidationError("Continuous field start and stop must differ.")
         steps = [_set_field(self.start_T, self.rate_T_per_min)]
-        steps.extend(WaitFieldBlock(self.timeout_s).expand())
-        if self.initial_equilibration_s > 0:
-            steps.extend(FieldEquilibrationBlock(self.initial_equilibration_s).expand())
+        steps.extend(
+            WaitFieldBlock(
+                timeout_s=self.timeout_s,
+                tolerance_T=self.tolerance_T,
+                stable_s=self.stable_at_target_s,
+                equilibration_s=self.initial_equilibration_s,
+                read_delay_s=self.field_read_delay_s,
+            ).expand()
+        )
         steps.append(_set_field(self.stop_T, self.rate_T_per_min))
         steps.append(
             _measure_until(
@@ -316,17 +420,25 @@ class RhoVsFieldContinuousBlock(SequenceBlock):
                 "field",
                 self.stop_T,
                 self.tolerance_T,
-                self.stable_at_target_s,
+                0.0,
                 self.timeout_s,
                 f"rho(H) {self.start_T:g} to {self.stop_T:g} T",
             )
+        )
+        steps.extend(
+            WaitFieldBlock(
+                timeout_s=self.timeout_s,
+                tolerance_T=self.tolerance_T,
+                stable_s=self.stable_at_target_s,
+                equilibration_s=self.endpoint_equilibration_s,
+                read_delay_s=self.field_read_delay_s,
+            ).expand()
         )
         return steps
 
     def summary(self) -> str:
         return (
-            f"{self.LABEL} — {self.start_T:g} → {self.stop_T:g} T "
-            f"@ {self.rate_T_per_min:g} T/min"
+            f"{self.LABEL} — {self.start_T:g} → {self.stop_T:g} T @ {self.rate_T_per_min:g} T/min"
         )
 
 
@@ -356,6 +468,8 @@ BLOCK_TYPES: dict[str, type[SequenceBlock]] = {
         SetFieldBlock,
         WaitFieldBlock,
         FieldEquilibrationBlock,
+        SetChamberBlock,
+        WaitChamberBlock,
         DelayBlock,
         CommentBlock,
         MeasureBlock,
@@ -441,30 +555,28 @@ def _primitive_blocks_from_step(step: dict[str, Any]) -> list[SequenceBlock]:
             SetTemperatureBlock(float(cfg["setpoint_K"]), float(cfg["rate_K_per_min"]))
         ]
         if cfg.get("wait"):
-            result.append(WaitTemperatureBlock(float(cfg.get("timeout_s", 3600.0))))
-            if float(cfg.get("settle_s", 0.0)) > 0:
-                result.append(TemperatureEquilibrationBlock(float(cfg["settle_s"])))
+            result.append(_temperature_wait_block(cfg))
         return result
     if "wait_temperature" in step:
         cfg = step["wait_temperature"]
-        result = [WaitTemperatureBlock(float(cfg.get("timeout_s", 3600.0)))]
-        if float(cfg.get("settle_s", 0.0)) > 0:
-            result.append(TemperatureEquilibrationBlock(float(cfg["settle_s"])))
-        return result
+        return [_temperature_wait_block(cfg)]
     if "set_field" in step:
         cfg = step["set_field"]
         result = [SetFieldBlock(float(cfg["setpoint_T"]), float(cfg["rate_T_per_min"]))]
         if cfg.get("wait"):
-            result.append(WaitFieldBlock(float(cfg.get("timeout_s", 3600.0))))
-            if float(cfg.get("settle_s", 0.0)) > 0:
-                result.append(FieldEquilibrationBlock(float(cfg["settle_s"])))
+            result.append(_field_wait_block(cfg))
         return result
     if "wait_field" in step:
         cfg = step["wait_field"]
-        result = [WaitFieldBlock(float(cfg.get("timeout_s", 3600.0)))]
-        if float(cfg.get("settle_s", 0.0)) > 0:
-            result.append(FieldEquilibrationBlock(float(cfg["settle_s"])))
+        return [_field_wait_block(cfg)]
+    if "set_chamber" in step:
+        cfg = step["set_chamber"]
+        result = [SetChamberBlock(str(cfg["mode"]))]
+        if cfg.get("wait"):
+            result.append(_chamber_wait_block(cfg))
         return result
+    if "wait_chamber" in step:
+        return [_chamber_wait_block(step["wait_chamber"])]
     if "measure" in step:
         cfg = step["measure"]
         return [
@@ -515,7 +627,11 @@ def _measure(
     duration_s: float | None,
     name: str,
 ) -> dict[str, Any]:
-    config: dict[str, Any] = {"channel": int(channel), "interval_s": float(interval_s), "name": name}
+    config: dict[str, Any] = {
+        "channel": int(channel),
+        "interval_s": float(interval_s),
+        "name": name,
+    }
     if points is not None:
         config["points"] = int(points)
     if duration_s is not None:
@@ -541,9 +657,39 @@ def _measure_until(
             "quantity": quantity,
             "target": float(target),
             "tolerance": float(tolerance),
-            "require_stable": True,
+            "require_stable": False,
             "settle_s": float(settle_s),
             "timeout_s": float(timeout_s),
             "name": name,
         },
     }
+
+
+def _temperature_wait_block(cfg: dict[str, Any]) -> WaitTemperatureBlock:
+    return WaitTemperatureBlock(
+        timeout_s=float(cfg.get("timeout_s", 3600.0)),
+        tolerance_K=float(cfg.get("tolerance_K", 0.05)),
+        stable_s=float(cfg.get("stable_s", 0.0)),
+        equilibration_s=float(cfg.get("equilibration_s", cfg.get("settle_s", 0.0))),
+        poll_s=float(cfg.get("poll_s", 2.0)),
+    )
+
+
+def _field_wait_block(cfg: dict[str, Any]) -> WaitFieldBlock:
+    return WaitFieldBlock(
+        timeout_s=float(cfg.get("timeout_s", 3600.0)),
+        tolerance_T=float(cfg.get("tolerance_T", 0.001)),
+        stable_s=float(cfg.get("stable_s", 0.0)),
+        equilibration_s=float(cfg.get("equilibration_s", cfg.get("settle_s", 0.0))),
+        poll_s=float(cfg.get("poll_s", 2.0)),
+        read_delay_s=float(cfg.get("read_delay_s", 10.0)),
+    )
+
+
+def _chamber_wait_block(cfg: dict[str, Any]) -> WaitChamberBlock:
+    return WaitChamberBlock(
+        timeout_s=float(cfg.get("timeout_s", 1800.0)),
+        stable_s=float(cfg.get("stable_s", 0.0)),
+        equilibration_s=float(cfg.get("equilibration_s", cfg.get("settle_s", 0.0))),
+        poll_s=float(cfg.get("poll_s", 2.0)),
+    )

@@ -38,6 +38,11 @@ ppms:
   socket_timeout_s: 10.0
   platform: "ppms"
   use_position: false
+  # PPMS/Model 6000 defaults to persistent. Use null for DynaCool so the
+  # driven_mode argument is omitted, or set another MultiPyVu enum name.
+  default_field_driven_mode: "persistent"
+  # PPMS 6000 field state is temporarily unreadable immediately after set_field.
+  field_read_delay_s: 10.0
 
 data:
   output_dir: "."

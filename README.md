@@ -50,11 +50,15 @@ status, plots, and logs return to the GUI through Qt signals. Pause/resume and a
 cooperative. Abort stops sequence/acquisition work but does not ramp field, change
 temperature, or change chamber state.
 
+The **Live Instrument Status → Lake Shore 372** tab includes a status-channel selector.
+It starts from `lakeshore372.default_channel` and can be changed while idle without editing
+the configuration file; subsequent live-status polls use the selected channel.
+
 ### Composable Sequence Builder
 
 The **Composable Sequence Builder** constructs an experiment as an ordered list of reusable
-blocks. Primitive blocks set temperature or field, wait for PPMS stability, add a separate
-post-stability equilibration delay, insert a general delay or marker, and acquire a chosen
+blocks. Primitive blocks set temperature or field, wait within a target tolerance for a
+stability duration and optional equilibration delay, insert a general delay or marker, and acquire a chosen
 number of points and/or duration. Higher-level blocks provide stepped and continuous
 resistivity-versus-temperature or resistivity-versus-field routines.
 
@@ -71,13 +75,15 @@ application log separate top-level tabs so each workspace can use the full windo
 
 Continuous templates use the reusable `measure_until` sequence operation. It records the
 actual PPMS temperature and field with every LS372 reading and stops only after the
-measured target is within tolerance and the corresponding PPMS status is stable. The step
-supports cooperative pause/abort and a required timeout; it does not estimate completion
-from nominal ramp duration.
+measured target is within tolerance. A following custom `wait_temperature` or `wait_field`
+step then requires the readback to remain within the user-selected tolerance for the
+configured stability time before applying the user-selected equilibration delay. These
+waits poll the actual values and do not call MultiPyVu's built-in `is_steady()` logic.
 
-An explicit `delay` sequence operation implements equilibration and general waits. It runs
-inside `SequenceRunner`, honors cooperative pause/abort, and is intentionally separate from
-the PPMS stable-wait operations.
+For PPMS 6000 systems, `ppms.field_read_delay_s` defines a protected interval after every
+field command. During that interval the controller does not call MultiPyVu's `get_field()`;
+status reads report the field as temporarily unavailable instead. An explicit `delay`
+operation remains available for general-purpose waits.
 
 ## Lab/hardware install with bundled MultiPyVu wheel
 
@@ -300,4 +306,13 @@ lakeshore372:
 ppms:
   simulation: false  # real MultiPyVu.Client; can connect to a simulated server
   # simulation: true # internal mock PPMS, no MultiPyVu server needed
+  platform: "ppms"
+  default_field_driven_mode: "persistent"
+  field_read_delay_s: 10.0  # PPMS 6000 no-read interval after set_field
 ```
+
+`default_field_driven_mode` supplies the MultiPyVu field `driven_mode` whenever a sequence
+does not specify one. Use `"persistent"` for a PPMS/Model 6000. For a DynaCool, set
+`platform: "dynacool"` and `default_field_driven_mode: null`; the controller will then call
+`set_field` without a driven-mode argument. The special value `"auto"` selects persistent
+mode for PPMS/6000 platform names and omits the argument for other platforms.

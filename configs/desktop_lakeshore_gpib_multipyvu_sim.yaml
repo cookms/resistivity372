@@ -37,6 +37,8 @@ ppms:
   socket_timeout_s: 10.0
   platform: "ppms"
   use_position: false
+  default_field_driven_mode: "persistent"
+  field_read_delay_s: 10.0
 
 data:
   output_dir: "."

@@ -38,6 +38,9 @@ class SequenceRunner:
         self.on_step = on_step or (lambda index, name: None)
         self.on_log = on_log or (lambda msg: None)
         self._run_t0 = time.monotonic()
+        self._temperature_target_K: float | None = None
+        self._field_target_T: float | None = None
+        self._chamber_target: str | None = None
 
     def validate(self, sequence: dict[str, Any]) -> None:
         validate_sequence_against_safety(sequence, self.safety)
@@ -74,70 +77,68 @@ class SequenceRunner:
                 rate_K_per_min=float(cfg["rate_K_per_min"]),
                 approach=str(cfg.get("approach", "fast_settle")),
             )
+            self._temperature_target_K = float(cfg["setpoint_K"])
             if cfg.get("wait", False):
-                self.on_log("Waiting for PPMS temperature stability.")
-                self.ppms.wait_until_steady(
-                    targets=("temperature",),
-                    timeout_s=float(cfg.get("timeout_s", 3600)),
-                    settle_s=float(cfg.get("settle_s", 0)),
-                    abort_flag=self.abort_flag,
-                )
+                self._wait_for_temperature(cfg)
             return
 
         if "wait_temperature" in step:
             cfg = step["wait_temperature"]
-            self.on_log("Waiting for PPMS temperature stability.")
-            self.ppms.wait_until_steady(
-                targets=("temperature",),
-                timeout_s=float(cfg.get("timeout_s", 3600)),
-                settle_s=float(cfg.get("settle_s", 0)),
-                abort_flag=self.abort_flag,
-            )
+            self._wait_for_temperature(cfg)
             return
 
         if "set_field" in step:
             cfg = step["set_field"]
-            self.on_log(
-                f"Field command: {cfg['setpoint_T']} T at {cfg['rate_T_per_min']} T/min"
-            )
+            self.on_log(f"Field command: {cfg['setpoint_T']} T at {cfg['rate_T_per_min']} T/min")
             self.ppms.set_field(
                 setpoint_T=float(cfg["setpoint_T"]),
                 rate_T_per_min=float(cfg["rate_T_per_min"]),
                 approach=str(cfg.get("approach", "linear")),
                 driven_mode=cfg.get("driven_mode"),
             )
+            self._field_target_T = float(cfg["setpoint_T"])
             if cfg.get("wait", False):
-                self.on_log("Waiting for PPMS field stability.")
-                self.ppms.wait_until_steady(
-                    targets=("field",),
-                    timeout_s=float(cfg.get("timeout_s", 3600)),
-                    settle_s=float(cfg.get("settle_s", 0)),
-                    abort_flag=self.abort_flag,
-                )
+                self._wait_for_field(cfg)
             return
 
         if "wait_field" in step:
             cfg = step["wait_field"]
-            self.on_log("Waiting for PPMS field stability.")
-            self.ppms.wait_until_steady(
-                targets=("field",),
-                timeout_s=float(cfg.get("timeout_s", 3600)),
-                settle_s=float(cfg.get("settle_s", 0)),
-                abort_flag=self.abort_flag,
-            )
+            self._wait_for_field(cfg)
             return
 
         if "set_chamber" in step:
             cfg = step["set_chamber"]
             self.on_log(f"Chamber command: {cfg['mode']}")
             self.ppms.set_chamber(str(cfg["mode"]))
+            self._chamber_target = str(cfg["mode"])
             if cfg.get("wait", False):
-                self.ppms.wait_until_steady(
-                    targets=("chamber",),
+                self.on_log("Waiting for PPMS chamber state.")
+                self.ppms.wait_for_chamber(
+                    target_mode=self._chamber_target,
+                    stable_s=float(cfg.get("stable_s", 0.0)),
+                    equilibration_s=_equilibration_s(cfg),
                     timeout_s=float(cfg.get("timeout_s", 1800)),
-                    settle_s=float(cfg.get("settle_s", 0)),
                     abort_flag=self.abort_flag,
+                    poll_s=float(cfg.get("poll_s", 2.0)),
                 )
+            return
+
+        if "wait_chamber" in step:
+            cfg = step["wait_chamber"]
+            target = cfg.get("target_mode", self._chamber_target)
+            if target is None:
+                raise SequenceValidationError(
+                    "wait_chamber requires target_mode or a preceding set_chamber step."
+                )
+            self.on_log(f"Waiting for PPMS chamber mode {target}.")
+            self.ppms.wait_for_chamber(
+                target_mode=str(target),
+                stable_s=float(cfg.get("stable_s", 0.0)),
+                equilibration_s=_equilibration_s(cfg),
+                timeout_s=float(cfg.get("timeout_s", 1800)),
+                abort_flag=self.abort_flag,
+                poll_s=float(cfg.get("poll_s", 2.0)),
+            )
             return
 
         if "set_position" in step:
@@ -182,7 +183,7 @@ class SequenceRunner:
                 target=float(cfg["target"]),
                 tolerance=float(cfg["tolerance"]),
                 timeout_s=float(cfg["timeout_s"]),
-                require_stable=bool(cfg.get("require_stable", True)),
+                require_stable=bool(cfg.get("require_stable", False)),
                 settle_s=float(cfg.get("settle_s", 0.0)),
                 step_index=index,
                 step_name=str(cfg.get("name", step_name)),
@@ -191,6 +192,54 @@ class SequenceRunner:
             return
 
         raise SequenceValidationError(f"Unknown step: {step}")
+
+    def _wait_for_temperature(self, cfg: dict[str, Any]) -> None:
+        target = cfg.get("target_K", self._temperature_target_K)
+        if target is None:
+            raise SequenceValidationError(
+                "wait_temperature requires target_K or a preceding set_temperature step."
+            )
+        tolerance = float(cfg.get("tolerance_K", 0.05))
+        stable_s = float(cfg.get("stable_s", 0.0))
+        equilibration_s = _equilibration_s(cfg)
+        self.on_log(
+            f"Waiting for temperature {float(target):g} +/- {tolerance:g} K for "
+            f"{stable_s:g} s, then equilibrating for {equilibration_s:g} s."
+        )
+        self.ppms.wait_for_temperature(
+            target_K=float(target),
+            tolerance_K=tolerance,
+            stable_s=stable_s,
+            equilibration_s=equilibration_s,
+            timeout_s=float(cfg.get("timeout_s", 3600)),
+            abort_flag=self.abort_flag,
+            poll_s=float(cfg.get("poll_s", 2.0)),
+        )
+
+    def _wait_for_field(self, cfg: dict[str, Any]) -> None:
+        target = cfg.get("target_T", self._field_target_T)
+        if target is None:
+            raise SequenceValidationError(
+                "wait_field requires target_T or a preceding set_field step."
+            )
+        tolerance = float(cfg.get("tolerance_T", 0.001))
+        stable_s = float(cfg.get("stable_s", 0.0))
+        equilibration_s = _equilibration_s(cfg)
+        read_delay = cfg.get("read_delay_s")
+        self.on_log(
+            f"Waiting for field {float(target):g} +/- {tolerance:g} T for {stable_s:g} s, "
+            f"then equilibrating for {equilibration_s:g} s."
+        )
+        self.ppms.wait_for_field(
+            target_T=float(target),
+            tolerance_T=tolerance,
+            stable_s=stable_s,
+            equilibration_s=equilibration_s,
+            timeout_s=float(cfg.get("timeout_s", 3600)),
+            abort_flag=self.abort_flag,
+            poll_s=float(cfg.get("poll_s", 2.0)),
+            read_delay_s=float(read_delay) if read_delay is not None else None,
+        )
 
     def _validate_step(self, step: dict[str, Any]) -> None:
         _validate_expanded_step(step, self.safety)
@@ -226,14 +275,32 @@ def validate_sequence_against_safety(sequence: dict[str, Any], safety: SafetyLim
         "set_field",
         "wait_field",
         "set_chamber",
+        "wait_chamber",
         "set_position",
         "measure",
         "measure_until",
     }
 
+    available_targets: set[str] = set()
     for index, step in enumerate(expanded_steps(steps)):
         try:
+            for quantity in ("temperature", "field", "chamber"):
+                wait_key = f"wait_{quantity}"
+                target_key = {
+                    "temperature": "target_K",
+                    "field": "target_T",
+                    "chamber": "target_mode",
+                }[quantity]
+                if wait_key in step and quantity not in available_targets:
+                    cfg = _mapping_config(step, wait_key)
+                    if target_key not in cfg:
+                        raise SequenceValidationError(
+                            f"{wait_key} needs {target_key} or a preceding set_{quantity} step."
+                        )
             _validate_expanded_step(step, safety, recognized)
+            for quantity in ("temperature", "field", "chamber"):
+                if f"set_{quantity}" in step:
+                    available_targets.add(quantity)
         except SequenceValidationError as exc:
             raise SequenceValidationError(f"Invalid expanded step {index}: {exc}") from exc
         except (KeyError, TypeError, ValueError) as exc:
@@ -253,6 +320,7 @@ def _validate_expanded_step(
         "set_field",
         "wait_field",
         "set_chamber",
+        "wait_chamber",
         "set_position",
         "measure",
         "measure_until",
@@ -286,6 +354,11 @@ def _validate_expanded_step(
         cfg = _mapping_config(step, "set_chamber")
         safety.check_chamber(str(cfg["mode"]))
         _validate_wait_options(cfg, "set_chamber")
+    if "wait_chamber" in step:
+        cfg = _mapping_config(step, "wait_chamber")
+        if "target_mode" in cfg:
+            safety.check_chamber(str(cfg["target_mode"]))
+        _validate_wait_options(cfg, "wait_chamber")
     if "set_position" in step:
         cfg = _mapping_config(step, "set_position")
         safety.check_position(float(cfg["position_deg"]), float(cfg.get("rate_deg_per_s", 1.0)))
@@ -333,3 +406,20 @@ def _validate_wait_options(config: dict[str, Any], operation: str) -> None:
         raise SequenceValidationError(f"{operation} timeout_s must be positive.")
     if "settle_s" in config and float(config["settle_s"]) < 0:
         raise SequenceValidationError(f"{operation} settle_s cannot be negative.")
+    if "stable_s" in config and float(config["stable_s"]) < 0:
+        raise SequenceValidationError(f"{operation} stable_s cannot be negative.")
+    if "equilibration_s" in config and float(config["equilibration_s"]) < 0:
+        raise SequenceValidationError(f"{operation} equilibration_s cannot be negative.")
+    if "poll_s" in config and float(config["poll_s"]) <= 0:
+        raise SequenceValidationError(f"{operation} poll_s must be positive.")
+    if "read_delay_s" in config and float(config["read_delay_s"]) < 0:
+        raise SequenceValidationError(f"{operation} read_delay_s cannot be negative.")
+    if "tolerance_K" in config and float(config["tolerance_K"]) <= 0:
+        raise SequenceValidationError(f"{operation} tolerance_K must be positive.")
+    if "tolerance_T" in config and float(config["tolerance_T"]) <= 0:
+        raise SequenceValidationError(f"{operation} tolerance_T must be positive.")
+
+
+def _equilibration_s(config: dict[str, Any]) -> float:
+    """Use the explicit name, while preserving legacy settle_s sequence files."""
+    return float(config.get("equilibration_s", config.get("settle_s", 0.0)))

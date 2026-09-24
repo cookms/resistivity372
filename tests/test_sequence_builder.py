@@ -74,9 +74,7 @@ def test_stepped_temperature_sequence_direction_and_multiple_fields(start, stop,
     assert fields == [0.0, 1.0, 3.0]
     assert temperatures == expected * 3
     assert all(
-        step["set_temperature"]["wait"]
-        for step in sequence["steps"]
-        if "set_temperature" in step
+        step["set_temperature"]["wait"] for step in sequence["steps"] if "set_temperature" in step
     )
 
 
@@ -119,7 +117,7 @@ def test_continuous_temperature_representation_and_yaml_round_trip():
     assert len(continuous) == 2
     assert all(step["quantity"] == "temperature" for step in continuous)
     assert all(step["target"] == 2.0 for step in continuous)
-    assert all(step["require_stable"] is True for step in continuous)
+    assert all(step["require_stable"] is False for step in continuous)
 
     loaded = yaml.safe_load(yaml.safe_dump(sequence, sort_keys=False))
     assert parse_sequence(loaded) == sequence
@@ -142,7 +140,9 @@ def test_continuous_field_representation_supports_decreasing_sweep():
         timeout_s=20_000.0,
     )
     field_commands = [step["set_field"] for step in sequence["steps"] if "set_field" in step]
-    continuous = next(step["measure_until"] for step in sequence["steps"] if "measure_until" in step)
+    continuous = next(
+        step["measure_until"] for step in sequence["steps"] if "measure_until" in step
+    )
     assert [command["setpoint_T"] for command in field_commands] == [9.0, -9.0]
     assert field_commands[0]["wait"] is True
     assert field_commands[1]["wait"] is False

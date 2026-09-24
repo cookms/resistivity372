@@ -49,7 +49,8 @@ def test_primitive_block_order_and_explicit_post_stability_equilibration():
     operations = [_operation(step) for step in sequence["steps"]]
     assert operations == ["set_temperature", "wait_temperature", "delay", "measure"]
     assert sequence["steps"][0]["set_temperature"]["wait"] is False
-    assert sequence["steps"][1]["wait_temperature"]["settle_s"] == 0.0
+    assert sequence["steps"][1]["wait_temperature"]["stable_s"] == 10.0
+    assert sequence["steps"][1]["wait_temperature"]["equilibration_s"] == 0.0
     assert sequence["steps"][2]["delay"]["duration_s"] == 300.0
 
 
@@ -82,13 +83,12 @@ def test_high_level_temperature_block_expands_to_executable_steps():
     assert [_operation(step) for step in steps] == [
         "set_temperature",
         "wait_temperature",
-        "delay",
         "measure",
     ] * 3
+    waits = [step["wait_temperature"] for step in steps if "wait_temperature" in step]
+    assert all(wait["equilibration_s"] == 15.0 for wait in waits)
     assert [
-        step["set_temperature"]["setpoint_K"]
-        for step in steps
-        if "set_temperature" in step
+        step["set_temperature"]["setpoint_K"] for step in steps if "set_temperature" in step
     ] == [6.0, 4.0, 2.0]
 
 
@@ -113,7 +113,7 @@ def test_composable_yaml_round_trip_restores_high_level_blocks():
     assert any("measure_until" in step for step in loaded["steps"])
 
 
-def test_manual_yaml_import_separates_stability_from_equilibration():
+def test_manual_yaml_import_preserves_equilibration_in_custom_wait():
     manual = {
         "version": 1,
         "steps": [
@@ -135,8 +135,8 @@ def test_manual_yaml_import_separates_stability_from_equilibration():
     assert [block.KIND for block in imported] == [
         "set_temperature",
         "wait_temperature",
-        "temperature_equilibration",
     ]
+    assert imported[1].equilibration_s == 300.0
 
 
 def test_multiple_measurement_routines_compose_in_one_experiment():
@@ -165,9 +165,7 @@ def test_multiple_measurement_routines_compose_in_one_experiment():
 
     sequence = blocks_to_sequence(blocks, SAFETY)
     quantities = [
-        step["measure_until"]["quantity"]
-        for step in sequence["steps"]
-        if "measure_until" in step
+        step["measure_until"]["quantity"] for step in sequence["steps"] if "measure_until" in step
     ]
 
     assert quantities == ["temperature", "field"]

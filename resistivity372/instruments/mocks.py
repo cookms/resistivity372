@@ -5,7 +5,11 @@ import random
 import time
 from typing import Any
 
-from resistivity372.core.exceptions import InstrumentConnectionError
+from resistivity372.core.exceptions import (
+    InstrumentConnectionError,
+    InstrumentError,
+    InstrumentTimeoutError,
+)
 from resistivity372.core.models import LakeShoreReading, PPMSStatus
 from resistivity372.core.safety import SafetyLimits
 
@@ -91,7 +95,9 @@ class MockPPMSController:
             raw={"simulated": True},
         )
 
-    def set_temperature(self, setpoint_K: float, rate_K_per_min: float, approach: str = "fast_settle") -> None:
+    def set_temperature(
+        self, setpoint_K: float, rate_K_per_min: float, approach: str = "fast_settle"
+    ) -> None:
         self._require_connected()
         self.safety.check_temperature(setpoint_K, rate_K_per_min)
         self._temperature_target_K = float(setpoint_K)
@@ -116,9 +122,7 @@ class MockPPMSController:
         self._field_target_T = float(setpoint_T)
         if self.ramp_readings:
             self._field_remaining = self.ramp_readings
-            self._field_increment_T = (
-                self._field_target_T - self.field_T
-            ) / self.ramp_readings
+            self._field_increment_T = (self._field_target_T - self.field_T) / self.ramp_readings
         else:
             self.field_T = self._field_target_T
             self._field_remaining = 0
@@ -133,28 +137,97 @@ class MockPPMSController:
         self.safety.check_position(position_deg, rate_deg_per_s)
         self.position_deg = float(position_deg)
 
-    def wait_until_steady(
+    def wait_for_temperature(
         self,
-        targets: tuple[str, ...],
+        target_K: float,
+        tolerance_K: float,
+        stable_s: float,
+        equilibration_s: float,
         timeout_s: float,
-        settle_s: float,
         abort_flag,
         poll_s: float = 2.0,
     ) -> None:
+        self._wait_for_condition(
+            lambda: abs(self.temperature_K - target_K) <= tolerance_K,
+            "temperature",
+            stable_s,
+            equilibration_s,
+            timeout_s,
+            abort_flag,
+        )
+
+    def wait_for_field(
+        self,
+        target_T: float,
+        tolerance_T: float,
+        stable_s: float,
+        equilibration_s: float,
+        timeout_s: float,
+        abort_flag,
+        poll_s: float = 2.0,
+        read_delay_s: float | None = None,
+    ) -> None:
+        self._wait_for_condition(
+            lambda: abs(self.field_T - target_T) <= tolerance_T,
+            "field",
+            stable_s,
+            equilibration_s,
+            timeout_s,
+            abort_flag,
+        )
+
+    def wait_for_chamber(
+        self,
+        target_mode: str,
+        stable_s: float,
+        equilibration_s: float,
+        timeout_s: float,
+        abort_flag,
+        poll_s: float = 2.0,
+    ) -> None:
+        self._wait_for_condition(
+            lambda: self.chamber_status == target_mode,
+            "chamber",
+            stable_s,
+            equilibration_s,
+            timeout_s,
+            abort_flag,
+        )
+
+    def _wait_for_condition(
+        self,
+        condition,
+        description: str,
+        stable_s: float,
+        equilibration_s: float,
+        timeout_s: float,
+        abort_flag,
+    ) -> None:
         self._require_connected()
         deadline = time.monotonic() + timeout_s
-        while self._targets_are_ramping(targets):
+        stable_since: float | None = None
+        while True:
             if abort_flag.is_set():
-                return
-            if time.monotonic() > deadline:
-                raise TimeoutError(f"Mock PPMS did not become steady within {timeout_s:g} s.")
+                raise InstrumentError("Wait aborted by user.")
+            now = time.monotonic()
+            if now > deadline:
+                raise InstrumentTimeoutError(
+                    f"Mock PPMS did not reach stable {description} within {timeout_s:g} s."
+                )
             self._advance_ramps()
+            if condition():
+                stable_since = stable_since if stable_since is not None else now
+                if now - stable_since >= stable_s:
+                    break
+            else:
+                stable_since = None
             time.sleep(0.001)
-        deadline = min(deadline, time.monotonic() + settle_s)
-        while time.monotonic() < deadline:
+
+        equilibration_deadline = time.monotonic() + equilibration_s
+        while time.monotonic() < equilibration_deadline:
             if abort_flag.is_set():
-                return
-            time.sleep(min(0.02, deadline - time.monotonic()))
+                raise InstrumentError("Wait aborted by user.")
+            time.sleep(min(0.02, equilibration_deadline - time.monotonic()))
 
     def _advance_ramps(self) -> None:
         if self._temperature_remaining:
@@ -167,12 +240,6 @@ class MockPPMSController:
             self.field_T += self._field_increment_T
             if not self._field_remaining:
                 self.field_T = self._field_target_T
-
-    def _targets_are_ramping(self, targets: tuple[str, ...]) -> bool:
-        return (
-            ("temperature" in targets and self._temperature_remaining > 0)
-            or ("field" in targets and self._field_remaining > 0)
-        )
 
     def _require_connected(self) -> None:
         if not self._connected:

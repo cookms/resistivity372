@@ -87,7 +87,7 @@ class ResistivityMeasurementEngine:
         target: float,
         tolerance: float,
         timeout_s: float,
-        require_stable: bool = True,
+        require_stable: bool = False,
         settle_s: float = 0.0,
         step_index: int | None = None,
         step_name: str = "",
@@ -130,11 +130,10 @@ class ResistivityMeasurementEngine:
             self._publish_record(record)
             count += 1
 
-            value, status = _condition_value(record.ppms, quantity)
+            value, _status = _condition_value(record.ppms, quantity)
             at_target = value is not None and abs(value - float(target)) <= float(tolerance)
-            stable = not require_stable or _status_is_stable(status)
             now = time.monotonic()
-            if at_target and stable:
+            if at_target:
                 if stable_since is None:
                     stable_since = now
                 if now - stable_since >= settle_s:
@@ -226,16 +225,3 @@ def _condition_value(status: PPMSStatus, quantity: str) -> tuple[float | None, o
     if quantity == "temperature":
         return status.temperature_K, status.temperature_status
     return status.field_T, status.field_status
-
-
-def _status_is_stable(status: object) -> bool:
-    if status is None:
-        return False
-    if isinstance(status, bool):
-        return status
-    name = getattr(status, "name", status)
-    normalized = str(name).strip().lower().replace("-", "_").replace(" ", "_")
-    if "unstable" in normalized or normalized.startswith("not_"):
-        return False
-    stable_tokens = {"stable", "holding", "at_target", "persistent"}
-    return normalized in stable_tokens or normalized.rsplit(".", 1)[-1] in stable_tokens

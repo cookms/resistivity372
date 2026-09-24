@@ -1,9 +1,20 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QFormLayout, QGroupBox, QLabel, QTabWidget, QVBoxLayout, QWidget
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import (
+    QFormLayout,
+    QGroupBox,
+    QLabel,
+    QSpinBox,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class StatusPanel(QGroupBox):
+    channelChanged = Signal(int)
+
     def __init__(self, parent=None):
         super().__init__("Live Instrument Status", parent)
         self._ppms_labels = self._make_labels(
@@ -43,24 +54,43 @@ class StatusPanel(QGroupBox):
             ),
             "PPMS",
         )
-        tabs.addTab(
-            self._form_widget(
-                self._ls_labels,
-                {
-                    "connection": "Connection",
-                    "channel": "Channel",
-                    "resistance": "Resistance",
-                    "temperature": "LS372 temperature",
-                    "power": "Excitation power",
-                    "current": "Excitation current",
-                    "quadrature": "Quadrature",
-                    "status": "Reading status",
-                },
-            ),
-            "Lake Shore 372",
+        self.channel_selector = QSpinBox()
+        self.channel_selector.setRange(1, 16)
+        self.channel_selector.setValue(1)
+        self.channel_selector.setToolTip(
+            "Lake Shore 372 input channel used for idle live-status polling."
         )
+        self.channel_selector.valueChanged.connect(self.channelChanged.emit)
+        ls_widget = QWidget()
+        ls_layout = QFormLayout(ls_widget)
+        ls_layout.addRow("Status channel", self.channel_selector)
+        for key, caption in {
+            "connection": "Connection",
+            "channel": "Reading channel",
+            "resistance": "Resistance",
+            "temperature": "LS372 temperature",
+            "power": "Excitation power",
+            "current": "Excitation current",
+            "quadrature": "Quadrature",
+            "status": "Reading status",
+        }.items():
+            ls_layout.addRow(caption, self._ls_labels[key])
+        tabs.addTab(ls_widget, "Lake Shore 372")
         layout = QVBoxLayout(self)
         layout.addWidget(tabs)
+
+    @property
+    def selected_channel(self) -> int:
+        return self.channel_selector.value()
+
+    def set_default_channel(self, channel: object) -> None:
+        try:
+            self.channel_selector.setValue(int(channel))
+        except (TypeError, ValueError):
+            self.channel_selector.setValue(1)
+
+    def set_channel_enabled(self, enabled: bool) -> None:
+        self.channel_selector.setEnabled(enabled)
 
     def update_status(self, payload: dict) -> None:
         connections = payload.get("connections", {})

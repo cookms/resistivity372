@@ -67,9 +67,7 @@ def build_stepped_temperature_sequence(
     duration_s: float | None,
     timeout_s: float,
 ) -> dict[str, Any]:
-    temperatures = inclusive_setpoints(
-        temperature_start_K, temperature_stop_K, temperature_step_K
-    )
+    temperatures = inclusive_setpoints(temperature_start_K, temperature_stop_K, temperature_step_K)
     acquisition = _measurement_config(channel, interval_s, points, duration_s)
     steps: list[dict[str, Any]] = [
         {"name": "Generated transport sequence", "comment": "rho vs T - stepped temperature"}
@@ -78,9 +76,7 @@ def build_stepped_temperature_sequence(
         steps.append(
             {
                 "name": f"Set field {field_T:g} T",
-                "set_field": _field_command(
-                    field_T, field_rate_T_per_min, True, timeout_s, 0.0
-                ),
+                "set_field": _field_command(field_T, field_rate_T_per_min, True, timeout_s, 0.0),
             }
         )
         for temperature_K in temperatures:
@@ -163,9 +159,19 @@ def build_continuous_temperature_sequence(
                         quantity="temperature",
                         target=temperature_stop_K,
                         tolerance=target_tolerance_K,
-                        settle_s=target_settle_s,
+                        settle_s=0.0,
                         timeout_s=timeout_s,
                     ),
+                },
+                {
+                    "name": f"Confirm temperature stable at {temperature_stop_K:g} K",
+                    "wait_temperature": {
+                        "target_K": float(temperature_stop_K),
+                        "tolerance_K": float(target_tolerance_K),
+                        "stable_s": float(target_settle_s),
+                        "equilibration_s": 0.0,
+                        "timeout_s": float(timeout_s),
+                    },
                 },
             ]
         )
@@ -259,9 +265,7 @@ def build_continuous_field_sequence(
         },
         {
             "name": f"Sweep field to {field_stop_T:g} T",
-            "set_field": _field_command(
-                field_stop_T, field_rate_T_per_min, False, timeout_s, 0.0
-            ),
+            "set_field": _field_command(field_stop_T, field_rate_T_per_min, False, timeout_s, 0.0),
         },
         {
             "name": f"Acquire rho(H) at {fixed_temperature_K:g} K",
@@ -271,9 +275,20 @@ def build_continuous_field_sequence(
                 quantity="field",
                 target=field_stop_T,
                 tolerance=target_tolerance_T,
-                settle_s=target_settle_s,
+                settle_s=0.0,
                 timeout_s=timeout_s,
             ),
+        },
+        {
+            "name": f"Confirm field stable at {field_stop_T:g} T",
+            "wait_field": {
+                "target_T": float(field_stop_T),
+                "tolerance_T": float(target_tolerance_T),
+                "stable_s": float(target_settle_s),
+                "equilibration_s": 0.0,
+                "read_delay_s": 10.0,
+                "timeout_s": float(timeout_s),
+            },
         },
     ]
     return _finish_sequence(EXPERIMENT_CONTINUOUS_H, steps, safety)
@@ -310,7 +325,9 @@ def _temperature_command(
         "approach": "fast_settle",
         "wait": bool(wait),
         "timeout_s": float(timeout_s),
-        "settle_s": float(settle_s),
+        "tolerance_K": 0.05,
+        "stable_s": 0.0,
+        "equilibration_s": float(settle_s),
     }
 
 
@@ -327,7 +344,10 @@ def _field_command(
         "approach": "linear",
         "wait": bool(wait),
         "timeout_s": float(timeout_s),
-        "settle_s": float(settle_s),
+        "tolerance_T": 0.001,
+        "stable_s": 0.0,
+        "equilibration_s": float(settle_s),
+        "read_delay_s": 10.0,
     }
 
 
@@ -347,7 +367,7 @@ def _measure_until_config(
         "quantity": quantity,
         "target": float(target),
         "tolerance": float(tolerance),
-        "require_stable": True,
+        "require_stable": False,
         "settle_s": float(settle_s),
         "timeout_s": float(timeout_s),
     }

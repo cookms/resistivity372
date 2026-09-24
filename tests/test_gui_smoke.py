@@ -41,6 +41,12 @@ def test_main_window_instantiates_and_shuts_down_offscreen():
     ]
     assert window.workspace_tabs.indexOf(window.sequence_editor) == 1
     assert window.workspace_tabs.indexOf(window.plot_panel) == 2
+    assert window.status_panel.selected_channel == 1
+
+    requested_channels = []
+    window.pollRequested.connect(requested_channels.append)
+    window.status_panel.channel_selector.setValue(4)
+    assert requested_channels[-1] == 4
 
     _shutdown(app, window)
 
